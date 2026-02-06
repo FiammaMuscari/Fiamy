@@ -68,7 +68,9 @@ _deps/
 .ninja_log
 
 # Application cache/data
-cache/
+!cache/.gitkeep
+!cache/audio/
+!cache/audio/.gitkeep
 *.dat
 *.log
 ytdlp_update.dat
