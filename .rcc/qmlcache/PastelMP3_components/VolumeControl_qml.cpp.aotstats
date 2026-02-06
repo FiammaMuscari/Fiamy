@@ -1,0 +1,167 @@
+{
+    "formatRevision": 1,
+    "modules": [
+        {
+            "moduleFiles": [
+                {
+                    "entries": [
+                        {
+                            "codegenResult": 2,
+                            "column": 28,
+                            "durationMicroseconds": 245,
+                            "functionName": "onCompleted",
+                            "line": 15,
+                            "message": "Type (component in C:/proyectos/PastelPlayer/components/VolumeControl.qml)::playerManager with type QObject does not have a property setVolume for calling"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 15,
+                            "durationMicroseconds": 101,
+                            "functionName": "text",
+                            "line": 23,
+                            "message": "Cannot access value for name volumeValue"
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 20,
+                            "durationMicroseconds": 175,
+                            "functionName": "width",
+                            "line": 35,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 31,
+                            "durationMicroseconds": 76,
+                            "functionName": "centerIn",
+                            "line": 34,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 24,
+                            "durationMicroseconds": 155,
+                            "functionName": "width",
+                            "line": 44,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 25,
+                            "durationMicroseconds": 63,
+                            "functionName": "height",
+                            "line": 45,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 16,
+                            "durationMicroseconds": 133,
+                            "functionName": "y",
+                            "line": 60,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 16,
+                            "durationMicroseconds": 129,
+                            "functionName": "x",
+                            "line": 61,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 24,
+                            "durationMicroseconds": 83,
+                            "functionName": "width",
+                            "line": 68,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 25,
+                            "durationMicroseconds": 45,
+                            "functionName": "height",
+                            "line": 69,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 25,
+                            "durationMicroseconds": 78,
+                            "functionName": "radius",
+                            "line": 70,
+                            "message": "Cannot load property radius from (component in C:/proyectos/PastelPlayer/components/VolumeControl.qml)::parent with type QQuickItem."
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 35,
+                            "durationMicroseconds": 40,
+                            "functionName": "centerIn",
+                            "line": 66,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 13,
+                            "durationMicroseconds": 0,
+                            "functionName": "updateVolume",
+                            "line": 79,
+                            "message": "Functions without type annotations won't be compiled"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 24,
+                            "durationMicroseconds": 64,
+                            "functionName": "onPressed",
+                            "line": 88,
+                            "message": "Cannot generate efficient code for call to untyped JavaScript function"
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 24,
+                            "durationMicroseconds": 25,
+                            "functionName": "onPressed",
+                            "line": 88,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 32,
+                            "durationMicroseconds": 94,
+                            "functionName": "onPositionChanged",
+                            "line": 92,
+                            "message": "Cannot generate efficient code for call to untyped JavaScript function"
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 32,
+                            "durationMicroseconds": 22,
+                            "functionName": "onPositionChanged",
+                            "line": 92,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 27,
+                            "durationMicroseconds": 39,
+                            "functionName": "fill",
+                            "line": 77,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 15,
+                            "durationMicroseconds": 190,
+                            "functionName": "text",
+                            "line": 101,
+                            "message": ""
+                        }
+                    ],
+                    "filePath": "C:/proyectos/PastelPlayer/components/VolumeControl.qml"
+                }
+            ],
+            "moduleId": "PastelMP3(PastelMP3)"
+        }
+    ]
+}

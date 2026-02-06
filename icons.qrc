@@ -1,0 +1,15 @@
+<RCC>
+    <qresource prefix="/">
+        <file>pink.ico</file>
+        <file>pink.png</file>
+        <file>PlayerCard.qml</file>
+        <file>AudioVisualizer.qml</file>
+        <file>components/ProgressBar.qml</file>
+        <file>components/VolumeSlider.qml</file>
+        <file>components/ControlsRow.qml</file>
+        <file>components/AddRemoveButtons.qml</file>
+        <file>components/PlayerControls.qml</file>
+        <file>components/VolumeControl.qml</file>
+        <file>components/ActionButtons.qml</file>
+    </qresource>
+</RCC>

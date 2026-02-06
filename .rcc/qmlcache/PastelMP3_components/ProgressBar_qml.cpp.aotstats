@@ -1,0 +1,167 @@
+{
+    "formatRevision": 1,
+    "modules": [
+        {
+            "moduleFiles": [
+                {
+                    "entries": [
+                        {
+                            "codegenResult": 0,
+                            "column": 18,
+                            "durationMicroseconds": 400,
+                            "functionName": "running",
+                            "line": 13,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 22,
+                            "durationMicroseconds": 1033,
+                            "functionName": "onTriggered",
+                            "line": 14,
+                            "message": "Cannot load property currentIndex from (component in C:/proyectos/PastelPlayer/components/ProgressBar.qml)::playerManager with type QVariant."
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 20,
+                            "durationMicroseconds": 104,
+                            "functionName": "width",
+                            "line": 54,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 31,
+                            "durationMicroseconds": 71,
+                            "functionName": "centerIn",
+                            "line": 53,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 24,
+                            "durationMicroseconds": 115,
+                            "functionName": "width",
+                            "line": 63,
+                            "message": "Cannot load property currentIndex from (component in C:/proyectos/PastelPlayer/components/ProgressBar.qml)::playerManager with type QVariant."
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 25,
+                            "durationMicroseconds": 73,
+                            "functionName": "height",
+                            "line": 70,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 16,
+                            "durationMicroseconds": 209,
+                            "functionName": "y",
+                            "line": 85,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 16,
+                            "durationMicroseconds": 106,
+                            "functionName": "x",
+                            "line": 86,
+                            "message": "Cannot load property currentIndex from (component in C:/proyectos/PastelPlayer/components/ProgressBar.qml)::playerManager with type QVariant."
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 24,
+                            "durationMicroseconds": 67,
+                            "functionName": "width",
+                            "line": 99,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 25,
+                            "durationMicroseconds": 88,
+                            "functionName": "height",
+                            "line": 100,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 25,
+                            "durationMicroseconds": 114,
+                            "functionName": "radius",
+                            "line": 101,
+                            "message": "Cannot load property radius from (component in C:/proyectos/PastelPlayer/components/ProgressBar.qml)::parent with type QQuickItem."
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 35,
+                            "durationMicroseconds": 55,
+                            "functionName": "centerIn",
+                            "line": 97,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 22,
+                            "durationMicroseconds": 305,
+                            "functionName": "enabled",
+                            "line": 109,
+                            "message": "Cannot generate efficient code for call to untyped JavaScript function"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 13,
+                            "durationMicroseconds": 0,
+                            "functionName": "updatePosition",
+                            "line": 110,
+                            "message": "Functions without type annotations won't be compiled"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 24,
+                            "durationMicroseconds": 83,
+                            "functionName": "onPressed",
+                            "line": 120,
+                            "message": "Cannot generate efficient code for call to untyped JavaScript function"
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 24,
+                            "durationMicroseconds": 38,
+                            "functionName": "onPressed",
+                            "line": 120,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 32,
+                            "durationMicroseconds": 99,
+                            "functionName": "onPositionChanged",
+                            "line": 124,
+                            "message": "Cannot generate efficient code for call to untyped JavaScript function"
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 32,
+                            "durationMicroseconds": 33,
+                            "functionName": "onPositionChanged",
+                            "line": 124,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 27,
+                            "durationMicroseconds": 103,
+                            "functionName": "fill",
+                            "line": 108,
+                            "message": ""
+                        }
+                    ],
+                    "filePath": "C:/proyectos/PastelPlayer/components/ProgressBar.qml"
+                }
+            ],
+            "moduleId": "PastelMP3(PastelMP3)"
+        }
+    ]
+}

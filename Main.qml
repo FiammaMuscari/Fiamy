@@ -1,0 +1,773 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import QtMultimedia
+import Qt.labs.platform
+import QtQuick.Window
+import Fiamy 1.0
+
+Window {
+    id: mainWindow
+    width: 360
+    height: 680
+    visible: true
+    title: "Pastel MP3 ♡"
+    color: "transparent"
+
+    flags: Qt.FramelessWindowHint | Qt.Window | Qt.WindowStaysOnTopHint
+
+    property bool isMinimizedMode: false
+    property real normalWidth: 360
+    property real normalHeight: 680
+    property real bookmarkWidth: 50
+    property real bookmarkHeight: 180
+
+    property real savedX: 0
+    property real savedY: 0
+    property bool firstMinimize: true
+    property bool isVerticalBookmark: true
+
+    Item {
+        id: playerManager
+        property var player
+        property var playlist: []
+        property int currentIndex: -1
+        property bool isPlaying: false
+        property int maxPlaylistSize: 50
+        property int playlistCount: 0
+        property alias mediaPlayer: player
+        property alias volume: audioOutput.volume
+        property real currentPosition: 0
+        property real currentDuration: 0
+
+        function getPosition() {
+            return currentPosition
+        }
+
+        function getDuration() {
+            return currentDuration
+        }
+
+        function seek(pos) {
+            player.position = pos
+            currentPosition = pos
+        }
+
+
+        function removeSong(index) {
+            console.log("🗑️ removeSong QML - índice:", index, "tamaño:", playlist.length)
+
+            if (index < 0 || index >= playlist.length) {
+                console.log("❌ Índice inválido")
+                return
+            }
+
+            console.log("🗑️ Eliminando:", playlist[index].name)
+
+            var temp = playlist
+            temp.splice(index, 1)
+            playlist = temp
+            playlistCount = playlist.length
+
+            if (index === currentIndex) {
+                if (playlist.length > 0) {
+                    currentIndex = Math.min(index, playlist.length - 1)
+                    playSong(currentIndex)
+                } else {
+                    player.stop()
+                    currentIndex = -1
+                    isPlaying = false
+                }
+            } else if (index < currentIndex) {
+                currentIndex--
+            }
+
+            console.log("✅ Eliminado. Nuevo tamaño:", playlist.length)
+        }
+
+
+        function removeCurrentSong() {
+            if (currentIndex < 0 || playlist.length === 0) return
+
+            playlist.splice(currentIndex, 1)
+            playlistCount = playlist.length
+
+            if (currentIndex >= playlistCount) currentIndex = playlistCount - 1
+
+            if (playlistCount > 0) {
+                playSong(currentIndex)
+            } else {
+                player.stop()
+                currentIndex = -1
+                isPlaying = false
+                currentPosition = 0
+                currentDuration = 0
+            }
+        }
+
+        function addStreamToPlaylist(url, title, author) {
+            if (!canAddMore()) return;
+
+            var cleanTitle = title ? title.replace(".mp3", "") : "YouTube Stream"
+
+            var newSong = {
+                "url": url.toString(),
+                "name": cleanTitle + " - " + (author || "YouTube")
+            }
+
+            var tempPlaylist = playlist
+            var insertPos = currentIndex >= 0 ? currentIndex + 1 : tempPlaylist.length
+            tempPlaylist.splice(insertPos, 0, newSong)
+
+            playlist = tempPlaylist
+            playlistCount = playlist.length
+
+            if (currentIndex < 0) {
+                playSong(0)
+            }
+        }
+
+        function seekRelative(ms) {
+            if (currentIndex < 0) return
+            var newPos = player.position + ms
+            if (newPos < 0) newPos = 0
+            if (newPos > player.duration) newPos = player.duration
+            seek(newPos)
+        }
+
+        Timer {
+            id: positionTimer
+            interval: 100
+            repeat: true
+            running: false
+            onTriggered: {
+                if (currentIndex >= 0) {
+                    currentPosition = player.position
+                    currentDuration = player.duration
+                }
+            }
+        }
+
+        MediaPlayer {
+            id: player
+            audioOutput: AudioOutput { id: audioOutput; volume: 0.7 }
+
+            onDurationChanged: {
+                playerManager.currentDuration = duration
+            }
+
+            onPositionChanged: {
+                playerManager.currentPosition = position
+            }
+
+            onPlaybackStateChanged: {
+                playerManager.isPlaying = (playbackState === MediaPlayer.PlayingState)
+
+                // ✅ Detectar cuando se detiene
+                if (playbackState === MediaPlayer.StoppedState) {
+                    console.log("🔍 Player detenido - position:", position, "duration:", duration)
+                }
+            }
+
+            // ✅ NUEVA SEÑAL: onMediaStatusChanged es MÁS CONFIABLE
+            onMediaStatusChanged: {
+                console.log("📊 MediaStatus:", mediaStatus)
+
+                if (mediaStatus === MediaPlayer.EndOfMedia) {
+                    console.log("🎵 Canción TERMINADA (EndOfMedia), avanzando...")
+                    Qt.callLater(playerManager.nextSong)
+                }
+            }
+
+            onErrorOccurred: function(error, errorString) {
+                console.log("❌ Error de reproducción:", errorString)
+                Qt.callLater(playerManager.nextSong)
+            }
+        }
+
+        function playSong(index) {
+            if (index >= 0 && index < playlistCount) {
+                currentIndex = index
+                player.stop()
+                player.source = "file:///" + playlist[index].url
+                player.play()
+            }
+        }
+
+        function addFiles(files) {
+            var tempPlaylist = playlist
+            var added = 0
+
+            for (var i = 0; i < files.length; i++) {
+                if (tempPlaylist.length >= maxPlaylistSize) break
+
+                var fileUrl = files[i].toString()
+                var fileName = decodeURIComponent(fileUrl.split('/').pop())
+
+                tempPlaylist.push({
+                    "url": fileUrl,
+                    "name": fileName
+                })
+                added++
+            }
+
+            playlist = tempPlaylist
+            playlistCount = playlist.length
+
+            if (currentIndex < 0 && playlistCount > 0) playSong(0)
+        }
+
+        function nextSong() {
+            if (currentIndex < playlistCount - 1) {
+                playSong(currentIndex + 1)
+            } else {
+                player.stop()
+                isPlaying = false
+            }
+        }
+
+        function previousSong() {
+            if (player.position > 3000) {
+                player.position = 0
+            } else if (currentIndex > 0) {
+                playSong(currentIndex - 1)
+            }
+        }
+
+        function togglePlayPause() {
+            if (playlistCount === 0) return
+            if (currentIndex < 0) { playSong(0); return }
+
+            if (isPlaying) player.pause()
+            else player.play()
+        }
+
+        function canAddMore() { return playlistCount < maxPlaylistSize }
+        function getRemainingSlots() { return maxPlaylistSize - playlistCount }
+        function getCurrentSongName() {
+            return (currentIndex >= 0 && currentIndex < playlistCount)
+                   ? playlist[currentIndex].name.replace(/\.[^/.]+$/, "")
+                   : "Title"
+        }
+    }
+
+    function minimizeToBookmark() {
+        savedX = mainWindow.x
+        savedY = mainWindow.y
+        isMinimizedMode = true
+
+        var currentScreen = Qt.application.screens[0]
+        for (var i = 0; i < Qt.application.screens.length; i++) {
+            var screen = Qt.application.screens[i]
+            if (mainWindow.x >= screen.virtualX &&
+                mainWindow.x < screen.virtualX + screen.width &&
+                mainWindow.y >= screen.virtualY &&
+                mainWindow.y < screen.virtualY + screen.height) {
+                currentScreen = screen
+                break
+            }
+        }
+
+        if (firstMinimize) {
+            isVerticalBookmark = false
+            mainWindow.height = bookmarkWidth
+            mainWindow.width = bookmarkHeight
+            mainWindow.x = currentScreen.virtualX + currentScreen.width - bookmarkHeight - 10
+            mainWindow.y = currentScreen.virtualY + 10
+            firstMinimize = false
+        } else {
+            snapToEdge()
+        }
+    }
+
+    function restoreWindow() {
+        isMinimizedMode = false
+        mainWindow.width = normalWidth
+        mainWindow.height = normalHeight
+        mainWindow.x = savedX
+        mainWindow.y = savedY
+    }
+
+    function snapToEdge() {
+        var currentScreen = Qt.application.screens[0]
+        for (var i = 0; i < Qt.application.screens.length; i++) {
+            var screen = Qt.application.screens[i]
+            var windowCenterX = mainWindow.x + mainWindow.width / 2
+            var windowCenterY = mainWindow.y + mainWindow.height / 2
+
+            if (windowCenterX >= screen.virtualX &&
+                windowCenterX < screen.virtualX + screen.width &&
+                windowCenterY >= screen.virtualY &&
+                windowCenterY < screen.virtualY + screen.height) {
+                currentScreen = screen
+                break
+            }
+        }
+
+        var centerX = mainWindow.x + mainWindow.width / 2
+        var centerY = mainWindow.y + mainWindow.height / 2
+
+        var distLeft = centerX - currentScreen.virtualX
+        var distRight = (currentScreen.virtualX + currentScreen.width) - centerX
+        var distTop = centerY - currentScreen.virtualY
+        var distBottom = (currentScreen.virtualY + currentScreen.height) - centerY
+
+        var minDist = Math.min(distLeft, distRight, distTop, distBottom)
+
+        if (minDist === distLeft) {
+            isVerticalBookmark = true
+            mainWindow.width = bookmarkWidth
+            mainWindow.height = bookmarkHeight
+            mainWindow.x = currentScreen.virtualX
+        } else if (minDist === distRight) {
+            isVerticalBookmark = true
+            mainWindow.width = bookmarkWidth
+            mainWindow.height = bookmarkHeight
+            mainWindow.x = currentScreen.virtualX + currentScreen.width - bookmarkWidth
+        } else if (minDist === distTop) {
+            isVerticalBookmark = false
+            mainWindow.height = bookmarkWidth
+            mainWindow.width = bookmarkHeight
+            mainWindow.y = currentScreen.virtualY
+        } else {
+            isVerticalBookmark = false
+            mainWindow.height = bookmarkWidth
+            mainWindow.width = bookmarkHeight
+            mainWindow.y = currentScreen.virtualY + currentScreen.height - bookmarkWidth
+        }
+
+        mainWindow.x = Math.max(currentScreen.virtualX,
+                               Math.min(currentScreen.virtualX + currentScreen.width - mainWindow.width,
+                                       mainWindow.x))
+        mainWindow.y = Math.max(currentScreen.virtualY,
+                               Math.min(currentScreen.virtualY + currentScreen.height - mainWindow.height,
+                                       mainWindow.y))
+    }
+
+    Rectangle {
+        id: titleBar
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        radius: 16
+        height: 40
+        color: "transparent"
+        z: 100
+        visible: !isMinimizedMode
+
+        MouseArea {
+            id: dragArea
+            anchors.fill: parent
+            property point lastMousePos: Qt.point(0, 0)
+
+            onPressed: {
+                lastMousePos = Qt.point(mouseX, mouseY)
+            }
+
+            onPositionChanged: {
+                if (pressed) {
+                    var dx = mouseX - lastMousePos.x
+                    var dy = mouseY - lastMousePos.y
+                    mainWindow.x += dx
+                    mainWindow.y += dy
+                }
+            }
+        }
+
+        Row {
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 8
+            spacing: 8
+
+            Rectangle {
+                width: 32
+                height: 32
+                radius: 16
+                color: minimizeArea.containsMouse ? "#4a4a5a" : "#3a3a4a"
+                border.color: "#5a5a6a"
+                border.width: 1
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "−"
+                    color: "#e0e0e0"
+                    font.pixelSize: 20
+                    font.bold: true
+                }
+
+                MouseArea {
+                    id: minimizeArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: minimizeToBookmark()
+                    cursorShape: Qt.PointingHandCursor
+                }
+            }
+
+            Rectangle {
+                width: 32
+                height: 32
+                radius: 16
+                color: closeArea.containsMouse ? "#ff4757" : "#3a3a4a"
+                border.color: closeArea.containsMouse ? "#ff6b7a" : "#5a5a6a"
+                border.width: 1
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "×"
+                    color: "#e0e0e0"
+                    font.pixelSize: 24
+                    font.bold: true
+                }
+
+                MouseArea {
+                    id: closeArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: Qt.quit()
+                    cursorShape: Qt.PointingHandCursor
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        id: bookmarkMode
+        anchors.fill: parent
+        visible: isMinimizedMode
+        radius: 8
+        z: 200
+
+        gradient: Gradient {
+            orientation: isVerticalBookmark ? Gradient.Vertical : Gradient.Horizontal
+            GradientStop { position: 0.0; color: "#2d2d3d" }
+            GradientStop { position: 0.5; color: "#232332" }
+            GradientStop { position: 1.0; color: "#1a1a28" }
+        }
+
+        border.color: "#5eead4"
+        border.width: 2
+
+        MouseArea {
+            id: bookmarkDragArea
+            anchors.fill: parent
+            property point dragStart: Qt.point(0, 0)
+            cursorShape: Qt.SizeAllCursor
+
+            onPressed: {
+                dragStart = Qt.point(mouse.x, mouse.y)
+            }
+
+            onPositionChanged: {
+                if (pressed) {
+                    var dx = mouse.x - dragStart.x
+                    var dy = mouse.y - dragStart.y
+                    mainWindow.x += dx
+                    mainWindow.y += dy
+                }
+            }
+
+            onReleased: {
+                snapToEdge()
+            }
+
+            onDoubleClicked: {
+                restoreWindow()
+            }
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 6
+            spacing: 6
+            visible: isVerticalBookmark
+
+            Rectangle {
+                Layout.alignment: Qt.AlignHCenter
+                width: 32
+                height: 32
+                radius: 16
+                color: playerManager.isPlaying ? "#5eead4" : "#3a3a4a"
+                border.color: playerManager.isPlaying ? "#2dd4bf" : "#505065"
+                border.width: 2
+
+                Text {
+                    anchors.centerIn: parent
+                    text: playerManager.isPlaying ? "▶" : "||"
+                    color: playerManager.isPlaying ? "#0f172a" : "#94a3b8"
+                    font.pixelSize: 12
+                    font.bold: true
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        playerManager.togglePlayPause()
+                        mouse.accepted = true
+                    }
+                    cursorShape: Qt.PointingHandCursor
+                    z: 10
+                }
+            }
+
+            Column {
+                Layout.alignment: Qt.AlignHCenter
+                spacing: 4
+
+                Rectangle {
+                    width: 28
+                    height: 28
+                    radius: 14
+                    color: prevArea.containsMouse ? "#4a4a5a" : "#3a3a4a"
+                    border.color: "#505065"
+                    border.width: 1
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "|◄"
+                        color: "#94a3b8"
+                        font.pixelSize: 10
+                    }
+
+                    MouseArea {
+                        id: prevArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: {
+                            playerManager.previousSong()
+                            mouse.accepted = true
+                        }
+                        cursorShape: Qt.PointingHandCursor
+                        z: 10
+                    }
+                }
+
+                Rectangle {
+                    width: 28
+                    height: 28
+                    radius: 14
+                    color: nextArea.containsMouse ? "#4a4a5a" : "#3a3a4a"
+                    border.color: "#505065"
+                    border.width: 1
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "►|"
+                        color: "#94a3b8"
+                        font.pixelSize: 10
+                    }
+
+                    MouseArea {
+                        id: nextArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: {
+                            playerManager.nextSong()
+                            mouse.accepted = true
+                        }
+                        cursorShape: Qt.PointingHandCursor
+                        z: 10
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.alignment: Qt.AlignHCenter
+                width: 32
+                height: 32
+                radius: 16
+                color: restoreArea.containsMouse ? "#5eead4" : "#3a3a4a"
+                border.color: restoreArea.containsMouse ? "#2dd4bf" : "#505065"
+                border.width: 2
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "□"
+                    color: restoreArea.containsMouse ? "#0f172a" : "#94a3b8"
+                    font.pixelSize: 14
+                    font.bold: true
+                }
+
+                MouseArea {
+                    id: restoreArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: {
+                        restoreWindow()
+                        mouse.accepted = true
+                    }
+                    cursorShape: Qt.PointingHandCursor
+                    z: 10
+                }
+            }
+        }
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.margins: 6
+            spacing: 6
+            visible: !isVerticalBookmark
+
+            Rectangle {
+                Layout.alignment: Qt.AlignVCenter
+                width: 32
+                height: 32
+                radius: 16
+                color: restoreArea2.containsMouse ? "#5eead4" : "#3a3a4a"
+                border.color: restoreArea2.containsMouse ? "#2dd4bf" : "#505065"
+                border.width: 2
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "□"
+                    color: restoreArea2.containsMouse ? "#0f172a" : "#94a3b8"
+                    font.pixelSize: 14
+                    font.bold: true
+                }
+
+                MouseArea {
+                    id: restoreArea2
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: {
+                        restoreWindow()
+                        mouse.accepted = true
+                    }
+                    cursorShape: Qt.PointingHandCursor
+                    z: 10
+                }
+            }
+
+            Row {
+                Layout.alignment: Qt.AlignVCenter
+                spacing: 4
+
+                Rectangle {
+                    width: 28
+                    height: 28
+                    radius: 14
+                    color: prevArea2.containsMouse ? "#4a4a5a" : "#3a3a4a"
+                    border.color: "#505065"
+                    border.width: 1
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "|◄"
+                        color: "#94a3b8"
+                        font.pixelSize: 10
+                    }
+
+                    MouseArea {
+                        id: prevArea2
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: {
+                            playerManager.previousSong()
+                            mouse.accepted = true
+                        }
+                        cursorShape: Qt.PointingHandCursor
+                        z: 10
+                    }
+                }
+
+                Rectangle {
+                    width: 28
+                    height: 28
+                    radius: 14
+                    color: nextArea2.containsMouse ? "#4a4a5a" : "#3a3a4a"
+                    border.color: "#505065"
+                    border.width: 1
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "►|"
+                        color: "#94a3b8"
+                        font.pixelSize: 10
+                    }
+
+                    MouseArea {
+                        id: nextArea2
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: {
+                            playerManager.nextSong()
+                            mouse.accepted = true
+                        }
+                        cursorShape: Qt.PointingHandCursor
+                        z: 10
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.alignment: Qt.AlignVCenter
+                width: 32
+                height: 32
+                radius: 16
+                color: playerManager.isPlaying ? "#5eead4" : "#3a3a4a"
+                border.color: playerManager.isPlaying ? "#2dd4bf" : "#505065"
+                border.width: 2
+
+                Text {
+                    anchors.centerIn: parent
+                    text: playerManager.isPlaying ? "▶" : "||"
+                    color: playerManager.isPlaying ? "#0f172a" : "#94a3b8"
+                    font.pixelSize: 12
+                    font.bold: true
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: {
+                        playerManager.togglePlayPause()
+                        mouse.accepted = true
+                    }
+                    cursorShape: Qt.PointingHandCursor
+                    z: 10
+                }
+            }
+        }
+    }
+
+    // DRAWER - Posicionado de forma ABSOLUTA, fuera del flujo normal
+    QueueDrawer {
+        id: queueDrawer
+        y: 16
+        height: mainWindow.height - 32
+        playerManager: playerManager
+        z: 200
+        visible: !isMinimizedMode
+    }
+
+    // PLAYERCARD - normal, sin cambios
+    Item {
+        anchors.fill: parent
+        anchors.margins: 16
+        visible: !isMinimizedMode
+
+        PlayerCard {
+            id: playerCard
+            anchors.fill: parent
+            playerManager: playerManager
+        }
+    }
+
+    Connections {
+        target: playerCard
+        function onAddFilesRequested() {
+            fileDialog.open()
+        }
+    }
+
+    FileDialog {
+        id: fileDialog
+        title: "Selecciona archivos MP3"
+        nameFilters: ["Audio files (*.mp3 *.wav *.m4a *.ogg *.flac)"]
+        fileMode: FileDialog.OpenFiles
+
+        onAccepted: {
+            playerManager.addFiles(fileDialog.files)
+        }
+    }
+}

@@ -1,0 +1,159 @@
+{
+    "formatRevision": 1,
+    "modules": [
+        {
+            "moduleFiles": [
+                {
+                    "entries": [
+                        {
+                            "codegenResult": 0,
+                            "column": 16,
+                            "durationMicroseconds": 445,
+                            "functionName": "width",
+                            "line": 17,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 27,
+                            "durationMicroseconds": 115,
+                            "functionName": "centerIn",
+                            "line": 15,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 19,
+                            "durationMicroseconds": 457,
+                            "functionName": "text",
+                            "line": 21,
+                            "message": "Cannot generate efficient code for call to untyped JavaScript function"
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 20,
+                            "durationMicroseconds": 105,
+                            "functionName": "elide",
+                            "line": 25,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 20,
+                            "durationMicroseconds": 139,
+                            "functionName": "width",
+                            "line": 26,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 34,
+                            "durationMicroseconds": 88,
+                            "functionName": "horizontalAlignment",
+                            "line": 27,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 25,
+                            "durationMicroseconds": 96,
+                            "functionName": "target",
+                            "line": 31,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 17,
+                            "durationMicroseconds": 206,
+                            "functionName": "onCurrentIndexChanged",
+                            "line": 32,
+                            "message": "Cannot generate efficient code for call to untyped JavaScript function"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 19,
+                            "durationMicroseconds": 126,
+                            "functionName": "text",
+                            "line": 39,
+                            "message": "Cannot load property playlistCount from (component in C:/proyectos/PastelPlayer/components/SongInfo.qml)::playerManager with type QVariant."
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 20,
+                            "durationMicroseconds": 80,
+                            "functionName": "width",
+                            "line": 48,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 34,
+                            "durationMicroseconds": 113,
+                            "functionName": "horizontalAlignment",
+                            "line": 49,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 25,
+                            "durationMicroseconds": 94,
+                            "functionName": "target",
+                            "line": 52,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 17,
+                            "durationMicroseconds": 111,
+                            "functionName": "onPlaylistCountChanged",
+                            "line": 53,
+                            "message": "Cannot access value for name parent"
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 17,
+                            "durationMicroseconds": 161,
+                            "functionName": "height",
+                            "line": 72,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 17,
+                            "durationMicroseconds": 102,
+                            "functionName": "radius",
+                            "line": 73,
+                            "message": "Cannot load property radius from (component in C:/proyectos/PastelPlayer/components/SongInfo.qml)::parent with type QQuickItem."
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 22,
+                            "durationMicroseconds": 115,
+                            "functionName": "top",
+                            "line": 69,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 23,
+                            "durationMicroseconds": 80,
+                            "functionName": "left",
+                            "line": 70,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 24,
+                            "durationMicroseconds": 73,
+                            "functionName": "right",
+                            "line": 71,
+                            "message": ""
+                        }
+                    ],
+                    "filePath": "C:/proyectos/PastelPlayer/components/SongInfo.qml"
+                }
+            ],
+            "moduleId": "PastelMP3(PastelMP3)"
+        }
+    ]
+}

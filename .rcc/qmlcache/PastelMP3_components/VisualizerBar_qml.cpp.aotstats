@@ -1,0 +1,167 @@
+{
+    "formatRevision": 1,
+    "modules": [
+        {
+            "moduleFiles": [
+                {
+                    "entries": [
+                        {
+                            "codegenResult": 0,
+                            "column": 22,
+                            "durationMicroseconds": 1280,
+                            "functionName": "onTriggered",
+                            "line": 19,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 16,
+                            "durationMicroseconds": 108,
+                            "functionName": "width",
+                            "line": 37,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 17,
+                            "durationMicroseconds": 267,
+                            "functionName": "height",
+                            "line": 38,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 25,
+                            "durationMicroseconds": 133,
+                            "functionName": "bottom",
+                            "line": 36,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 21,
+                            "durationMicroseconds": 177,
+                            "functionName": "radius",
+                            "line": 54,
+                            "message": "Cannot load property radius from (component in C:/proyectos/PastelPlayer/components/VisualizerBar.qml)::parent with type QQuickItem."
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 27,
+                            "durationMicroseconds": 67,
+                            "functionName": "fill",
+                            "line": 52,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 26,
+                            "durationMicroseconds": 268,
+                            "functionName": "running",
+                            "line": 64,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 24,
+                            "durationMicroseconds": 102,
+                            "functionName": "loops",
+                            "line": 65,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 21,
+                            "durationMicroseconds": 85,
+                            "functionName": "radius",
+                            "line": 75,
+                            "message": "Cannot load property radius from (component in C:/proyectos/PastelPlayer/components/VisualizerBar.qml)::parent with type QQuickItem."
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 22,
+                            "durationMicroseconds": 286,
+                            "functionName": "opacity",
+                            "line": 80,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 27,
+                            "durationMicroseconds": 55,
+                            "functionName": "fill",
+                            "line": 73,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 16,
+                            "durationMicroseconds": 102,
+                            "functionName": "width",
+                            "line": 88,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 18,
+                            "durationMicroseconds": 138,
+                            "functionName": "visible",
+                            "line": 92,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 25,
+                            "durationMicroseconds": 135,
+                            "functionName": "bottom",
+                            "line": 86,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 31,
+                            "durationMicroseconds": 173,
+                            "functionName": "bottomMargin",
+                            "line": 87,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 20,
+                            "durationMicroseconds": 142,
+                            "functionName": "width",
+                            "line": 97,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 21,
+                            "durationMicroseconds": 95,
+                            "functionName": "height",
+                            "line": 98,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 21,
+                            "durationMicroseconds": 92,
+                            "functionName": "radius",
+                            "line": 99,
+                            "message": "Cannot load property radius from (component in C:/proyectos/PastelPlayer/components/VisualizerBar.qml)::parent with type QQuickItem."
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 31,
+                            "durationMicroseconds": 52,
+                            "functionName": "centerIn",
+                            "line": 96,
+                            "message": ""
+                        }
+                    ],
+                    "filePath": "C:/proyectos/PastelPlayer/components/VisualizerBar.qml"
+                }
+            ],
+            "moduleId": "PastelMP3(PastelMP3)"
+        }
+    ]
+}

@@ -1,0 +1,167 @@
+{
+    "formatRevision": 1,
+    "modules": [
+        {
+            "moduleFiles": [
+                {
+                    "entries": [
+                        {
+                            "codegenResult": 2,
+                            "column": 17,
+                            "durationMicroseconds": 222,
+                            "functionName": "radius",
+                            "line": 30,
+                            "message": "Cannot load property radius from (component in C:/proyectos/PastelPlayer/components/PlayerCard.qml)::parent with type QQuickItem."
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 23,
+                            "durationMicroseconds": 206,
+                            "functionName": "fill",
+                            "line": 28,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 17,
+                            "durationMicroseconds": 117,
+                            "functionName": "radius",
+                            "line": 40,
+                            "message": "Cannot load property radius from (component in C:/proyectos/PastelPlayer/components/PlayerCard.qml)::parent with type QQuickItem."
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 23,
+                            "durationMicroseconds": 83,
+                            "functionName": "fill",
+                            "line": 38,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 17,
+                            "durationMicroseconds": 208,
+                            "functionName": "height",
+                            "line": 52,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 17,
+                            "durationMicroseconds": 95,
+                            "functionName": "radius",
+                            "line": 53,
+                            "message": "Cannot load property radius from (component in C:/proyectos/PastelPlayer/components/PlayerCard.qml)::parent with type QQuickItem."
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 22,
+                            "durationMicroseconds": 116,
+                            "functionName": "top",
+                            "line": 49,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 23,
+                            "durationMicroseconds": 95,
+                            "functionName": "left",
+                            "line": 50,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 24,
+                            "durationMicroseconds": 88,
+                            "functionName": "right",
+                            "line": 51,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 23,
+                            "durationMicroseconds": 56,
+                            "functionName": "fill",
+                            "line": 63,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 24,
+                            "durationMicroseconds": 58,
+                            "functionName": "isPlaying",
+                            "line": 73,
+                            "message": "Cannot load property isPlaying from (component in C:/proyectos/PastelPlayer/components/PlayerCard.qml)::playerManager with type QVariant."
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 28,
+                            "durationMicroseconds": 70,
+                            "functionName": "playerManager",
+                            "line": 74,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 28,
+                            "durationMicroseconds": 87,
+                            "functionName": "playerManager",
+                            "line": 82,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 28,
+                            "durationMicroseconds": 106,
+                            "functionName": "playerManager",
+                            "line": 90,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 28,
+                            "durationMicroseconds": 126,
+                            "functionName": "playerManager",
+                            "line": 98,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 31,
+                            "durationMicroseconds": 107,
+                            "functionName": "alignment",
+                            "line": 95,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 28,
+                            "durationMicroseconds": 104,
+                            "functionName": "playerManager",
+                            "line": 106,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 28,
+                            "durationMicroseconds": 70,
+                            "functionName": "playerManager",
+                            "line": 115,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 32,
+                            "durationMicroseconds": 114,
+                            "functionName": "onAddFilesClicked",
+                            "line": 118,
+                            "message": ""
+                        }
+                    ],
+                    "filePath": "C:/proyectos/PastelPlayer/components/PlayerCard.qml"
+                }
+            ],
+            "moduleId": "PastelMP3(PastelMP3)"
+        }
+    ]
+}

@@ -1,0 +1,18 @@
+module PastelMP3
+typeinfo PastelMP3.qmltypes
+prefer :/PastelMP3/
+Main 1.0 Main.qml
+ActionButtons 1.0 components/ActionButtons.qml
+AudioVisualizer 1.0 components/AudioVisualizer.qml
+BookmarkPlayer 1.0 components/BookmarkPlayer.qml
+PlayerCard 1.0 components/PlayerCard.qml
+PlayerControls 1.0 components/PlayerControls.qml
+PlayerManager 1.0 components/PlayerManager.qml
+ProgressBar 1.0 components/ProgressBar.qml
+SongInfo 1.0 components/SongInfo.qml
+VisualizerBar 1.0 components/VisualizerBar.qml
+VisualizerBars 1.0 components/VisualizerBars.qml
+VolumeControl 1.0 components/VolumeControl.qml
+YoutubeQueueInput 1.0 components/YoutubeQueueInput.qml
+depends QtQuick
+

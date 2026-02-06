@@ -1,0 +1,10 @@
+module components
+PlayerCard 1.0 PlayerCard.qml
+AudioVisualizer 1.0 AudioVisualizer.qml
+VisualizerBars 1.0 VisualizerBars.qml
+VisualizerBar 1.0 VisualizerBar.qml
+SongInfo 1.0 SongInfo.qml
+ProgressBar 1.0 ProgressBar.qml
+PlayerControls 1.0 PlayerControls.qml
+VolumeControl 1.0 VolumeControl.qml
+ActionButtons 1.0 ActionButtons.qml
