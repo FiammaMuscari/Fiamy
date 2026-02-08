@@ -53,6 +53,38 @@ Window {
             currentPosition = pos
         }
 
+        // ✨ FUNCIÓN moveSong para drag & drop
+        function moveSong(fromIndex, toIndex) {
+            console.log("🔄 moveSong:", fromIndex, "→", toIndex)
+
+            if (fromIndex < 0 || fromIndex >= playlist.length ||
+                toIndex < 0 || toIndex >= playlist.length ||
+                fromIndex === toIndex) {
+                console.log("❌ Índices inválidos")
+                return
+            }
+
+            var temp = playlist.slice()
+            var song = temp[fromIndex]
+
+            temp.splice(fromIndex, 1)
+            temp.splice(toIndex, 0, song)
+
+            var newCurrentIndex = currentIndex
+            if (currentIndex === fromIndex) {
+                newCurrentIndex = toIndex
+            } else if (fromIndex < currentIndex && toIndex >= currentIndex) {
+                newCurrentIndex--
+            } else if (fromIndex > currentIndex && toIndex <= currentIndex) {
+                newCurrentIndex++
+            }
+
+            playlist = temp
+            currentIndex = newCurrentIndex
+            playlistCount = playlist.length
+
+            console.log("✅ Canción movida. Nuevo currentIndex:", currentIndex)
+        }
 
         function removeSong(index) {
             console.log("🗑️ removeSong QML - índice:", index, "tamaño:", playlist.length)
@@ -85,7 +117,6 @@ Window {
             console.log("✅ Eliminado. Nuevo tamaño:", playlist.length)
         }
 
-
         function removeCurrentSong() {
             if (currentIndex < 0 || playlist.length === 0) return
 
@@ -105,24 +136,70 @@ Window {
             }
         }
 
-        function addStreamToPlaylist(url, title, author) {
-            if (!canAddMore()) return;
+        function addSingleNext(song) {
+            if (!canAddMore()) return
+
+            var temp = playlist
+            var insertPos = currentIndex >= 0 ? currentIndex + 1 : temp.length
+
+            temp.splice(insertPos, 0, song)
+
+            playlist = temp
+            playlistCount = playlist.length
+
+            if (currentIndex < 0) playSong(0)
+        }
+
+        function addPlaylistNext(songsArray) {
+            if (!canAddMore() || songsArray.length === 0) return
+
+            var temp = playlist
+            var insertPos = currentIndex >= 0 ? currentIndex + 1 : temp.length
+
+            temp.splice.apply(temp, [insertPos, 0].concat(songsArray))
+
+            playlist = temp
+            playlistCount = playlist.length
+
+            if (currentIndex < 0) playSong(0)
+        }
+
+        function addStreamToPlaylist(url, title, author, isFromPlaylist) {
+            if (!canAddMore()) {
+                console.log("❌ Playlist llena, no se puede agregar más")
+                return
+            }
 
             var cleanTitle = title ? title.replace(".mp3", "") : "YouTube Stream"
+            var displayName = cleanTitle + (author ? " - " + author : " - YouTube")
 
             var newSong = {
                 "url": url.toString(),
-                "name": cleanTitle + " - " + (author || "YouTube")
+                "name": displayName
             }
 
+            console.log("➕ Agregando stream:", displayName)
+
             var tempPlaylist = playlist
-            var insertPos = currentIndex >= 0 ? currentIndex + 1 : tempPlaylist.length
+            var insertPos
+
+            if (isFromPlaylist === true) {
+                insertPos = tempPlaylist.length
+                console.log("   📋 De playlist, agregando al final en posición:", insertPos)
+            } else {
+                insertPos = currentIndex >= 0 ? currentIndex + 1 : tempPlaylist.length
+                console.log("   🎵 Individual, agregando después de actual en posición:", insertPos)
+            }
+
             tempPlaylist.splice(insertPos, 0, newSong)
 
             playlist = tempPlaylist
             playlistCount = playlist.length
 
+            console.log("✅ Stream agregado. Total en cola:", playlistCount)
+
             if (currentIndex < 0) {
+                console.log("▶️ Iniciando reproducción automática")
                 playSong(0)
             }
         }
@@ -163,13 +240,11 @@ Window {
             onPlaybackStateChanged: {
                 playerManager.isPlaying = (playbackState === MediaPlayer.PlayingState)
 
-                // ✅ Detectar cuando se detiene
                 if (playbackState === MediaPlayer.StoppedState) {
                     console.log("🔍 Player detenido - position:", position, "duration:", duration)
                 }
             }
 
-            // ✅ NUEVA SEÑAL: onMediaStatusChanged es MÁS CONFIABLE
             onMediaStatusChanged: {
                 console.log("📊 MediaStatus:", mediaStatus)
 
@@ -477,6 +552,8 @@ Window {
             }
         }
 
+        property var playlistBuffer: []
+
         ColumnLayout {
             anchors.fill: parent
             anchors.margins: 6
@@ -730,27 +807,28 @@ Window {
         }
     }
 
-    // DRAWER - Posicionado de forma ABSOLUTA, fuera del flujo normal
-    QueueDrawer {
-        id: queueDrawer
-        y: 16
-        height: mainWindow.height - 32
-        playerManager: playerManager
-        z: 200
-        visible: !isMinimizedMode
-    }
-
-    // PLAYERCARD - normal, sin cambios
+    // 🔥 CAMBIO CRÍTICO: PlayerCard DEBAJO del drawer (z: 50)
     Item {
         anchors.fill: parent
         anchors.margins: 16
         visible: !isMinimizedMode
+        z: 50  // 🔥 z-index BAJO para que no bloquee el drawer
 
         PlayerCard {
             id: playerCard
             anchors.fill: parent
             playerManager: playerManager
         }
+    }
+
+    // 🔥 DRAWER ENCIMA del PlayerCard (z: 300)
+    QueueDrawer {
+        id: queueDrawer
+        y: 16
+        height: mainWindow.height - 32
+        playerManager: playerManager
+        z: 300  // 🔥 z-index ALTO para estar encima de todo
+        visible: !isMinimizedMode
     }
 
     Connections {
