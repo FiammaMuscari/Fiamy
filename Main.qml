@@ -264,7 +264,7 @@ Window {
             if (index >= 0 && index < playlistCount) {
                 currentIndex = index
                 player.stop()
-                player.source = "file:///" + playlist[index].url
+                player.source = playlist[index].url
                 player.play()
             }
         }
