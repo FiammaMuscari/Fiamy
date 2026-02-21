@@ -18,7 +18,7 @@ A lightweight desktop MP3 player built with **Qt + C++**, focused on streaming u
 <div align="center">
 Windows Installer
   
-**[⬇️ Download Fiamy v1.0.0 (Windows)](https://github.com/FiammaMuscari/Fiamy/releases/download/v1.0.0/Fiamy_Setup_v1.0.0.exe)**
+**[⬇️ Download Fiamy v1.0.1 (Windows)](https://github.com/FiammaMuscari/Fiamy/releases/download/v1.0.1/Fiamy_Setup-1.0.1.exe)**
 
 *Free & Open Source • No ads • No tracking*
 
