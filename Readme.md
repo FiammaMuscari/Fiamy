@@ -1,6 +1,13 @@
 # 🎧 Fiamy MP3 Youtube Player
 
+
+
+https://github.com/user-attachments/assets/527a1af5-66ef-4c0c-b44b-d12c9d5a331a
+
+
+
 A lightweight desktop MP3 player built with **Qt + C++**, focused on streaming udio from **YouTube** in a smooth and modern way.
+
 
 [![License: MIT](https://img.shields.io/badge/License-Open_Source-green?style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows-blue?style=for-the-badge&logo=windows)](https://github.com/FiammaMuscari/Fiamy/releases)
