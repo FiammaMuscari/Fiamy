@@ -6,6 +6,24 @@ Item {
     property real targetHeight: 0
     property int barIndex: 0
     property real displayHeight: isPlaying ? Math.max(0.04, targetHeight) : 0.04
+    property real peakHeight: displayHeight
+
+    onTargetHeightChanged: {
+        if (!root.isPlaying) {
+            root.displayHeight = 0.04
+            return
+        }
+
+        var boosted = Math.max(0.04, root.targetHeight)
+        root.displayHeight = root.displayHeight * 0.78 + boosted * 0.22
+    }
+
+    onIsPlayingChanged: {
+        if (!root.isPlaying) {
+            root.displayHeight = 0.04
+            root.peakHeight = 0.04
+        }
+    }
 
     // 1️⃣ BARRA PRINCIPAL CON GRADIENTE
     Rectangle {
@@ -49,13 +67,13 @@ Item {
         }
 
         Behavior on height {
-            NumberAnimation { duration: 70; easing.type: Easing.OutCubic }
+            NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
         }
     }
 
     Rectangle {
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: parent.height * root.displayHeight - 2
+        anchors.bottomMargin: parent.height * root.peakHeight - 2
         width: parent.width + 2
         height: 3
         radius: 2
@@ -75,7 +93,20 @@ Item {
         }
 
         Behavior on anchors.bottomMargin {
-            NumberAnimation { duration: 90; easing.type: Easing.OutCubic }
+            NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+        }
+    }
+
+    Timer {
+        interval: 48
+        running: root.isPlaying
+        repeat: true
+        onTriggered: {
+            if (root.displayHeight > root.peakHeight) {
+                root.peakHeight = root.displayHeight
+            } else {
+                root.peakHeight = Math.max(root.displayHeight, root.peakHeight * 0.92)
+            }
         }
     }
 }
