@@ -54,6 +54,7 @@ build/
 build-*/
 cmake-build-*/
 out/
+dist/
 
 # CMake
 CMakeCache.txt
@@ -82,6 +83,8 @@ yt-dlp.exe
 # Installer output
 installer_output/
 *.msi
+*.deb
+*.AppImage
 
 # IDE
 .vscode/

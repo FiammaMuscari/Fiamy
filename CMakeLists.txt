@@ -173,3 +173,40 @@ elseif(UNIX)
         )
     endif()
 endif()
+
+if(UNIX AND NOT APPLE)
+    configure_file(
+        "${CMAKE_SOURCE_DIR}/platform/linux/fiamy.desktop.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/fiamy.desktop"
+        @ONLY
+    )
+    configure_file(
+        "${CMAKE_SOURCE_DIR}/pink.png"
+        "${CMAKE_CURRENT_BINARY_DIR}/fiamy.png"
+        COPYONLY
+    )
+
+    install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/fiamy.desktop"
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
+    )
+
+    install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/fiamy.png"
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/256x256/apps
+    )
+endif()
+
+set(CPACK_PACKAGE_NAME "fiamy")
+set(CPACK_PACKAGE_VENDOR "FiammaMuscari")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Fiamy MP3 and YouTube player")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_CONTACT "fiammamuscari@gmail.com")
+set(CPACK_PACKAGE_FILE_NAME "fiamy-${PROJECT_VERSION}-linux")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "fiammamuscari")
+set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+set(CPACK_DEBIAN_PACKAGE_SECTION "multimedia")
+set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+set(CPACK_DEBIAN_PACKAGE_GENERATE_SHLIBS ON)
+
+include(CPack)

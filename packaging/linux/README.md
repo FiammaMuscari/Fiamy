@@ -12,4 +12,4 @@ Possible formats:
 
 - `build-release.sh` → builds a release binary
 - `package-portable.sh` → creates an initial portable folder
-
+- `package-deb.sh` → creates a Debian package

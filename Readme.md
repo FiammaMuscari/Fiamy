@@ -56,6 +56,7 @@ This repository is organized to clearly separate the **Windows** and **Linux** f
 - ✅ local cache
 - ✅ Linux-adapted visualizer
 - ✅ working file picker
+- ✅ `.deb` installer available via `packaging/linux/package-deb.sh`
 
 ### Audio cache
 
@@ -111,4 +112,3 @@ The next natural step for the repository is to prepare:
 - Linux packaging
 - Windows packaging
 - installers with the required Qt6 dependencies
-

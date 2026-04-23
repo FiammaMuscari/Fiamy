@@ -40,3 +40,10 @@ Typical path:
 
 This creates a `dist/fiamy-linux-portable/` folder ready to review.
 
+### Debian package
+
+```bash
+./packaging/linux/package-deb.sh
+```
+
+This creates a `.deb` package in `dist/linux-deb/`.

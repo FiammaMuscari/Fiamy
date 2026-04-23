@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Fiamy
+Comment=MP3 and YouTube player
+Exec=fiamy
+Icon=fiamy
+Categories=AudioVideo;Player;Qt;
+Terminal=false
+StartupNotify=true
