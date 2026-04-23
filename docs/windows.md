@@ -12,3 +12,12 @@ Preservar el flujo histórico de Windows sin mezclarlo con los cambios Linux.
 - separar deploy de Windows
 - documentar dependencias Qt6 / DLLs necesarias
 
+## Flujo mínimo recomendado
+
+En Windows, la idea es usar `windeployqt` sobre el ejecutable release:
+
+```bat
+packaging\windows\deploy-windows.bat
+```
+
+Ese script queda como base para el empaquetado posterior.

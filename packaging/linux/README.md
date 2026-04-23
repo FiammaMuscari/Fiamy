@@ -8,3 +8,7 @@ Posibles formatos:
 - `.deb`
 - tarball portable
 
+## Scripts incluidos
+
+- `build-release.sh` → compila release
+- `package-portable.sh` → arma una carpeta portable inicial

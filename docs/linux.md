@@ -24,3 +24,18 @@ Ruta típica:
 - empaquetado de Qt6 para release
 - revisar instalador / AppImage / `.deb`
 
+## Flujo mínimo recomendado
+
+### Build release
+
+```bash
+./packaging/linux/build-release.sh
+```
+
+### Carpeta portable
+
+```bash
+./packaging/linux/package-portable.sh
+```
+
+Esto genera una carpeta `dist/fiamy-linux-portable/` lista para revisar.
