@@ -55,6 +55,7 @@ This repository is organized to clearly separate the **Windows** and **Linux** f
 - ✅ YouTube integration with `yt-dlp`
 - ✅ local cache
 - ✅ Linux-adapted visualizer
+- ✅ smoother visualizer tuned for large playlist installs
 - ✅ working file picker
 - ✅ `.deb` installer available via `packaging/linux/package-deb.sh`
 
@@ -67,6 +68,14 @@ While Fiamy is running on Linux, the cache is stored in:
 ```
 
 In this branch, newly cached files are saved with readable names whenever possible.
+
+### Latest Linux package refresh
+
+The Linux package was refreshed on **April 23, 2026** with:
+
+- lower visualizer CPU usage
+- smoother and slower visualizer bars
+- rebuilt `.deb` installer from `linux-qt6`
 
 ## 🪟 Windows (branch `windows-legacy`)
 
@@ -120,6 +129,7 @@ The project now keeps **Windows** and **Linux** releases side by side, without r
 - Release page: <https://github.com/FiammaMuscari/Fiamy/releases/tag/v1.0.2-linux-beta>
 - Latest installer: [**fiamy_1.0_amd64.deb**](https://github.com/FiammaMuscari/Fiamy/releases/download/v1.0.2-linux-beta/fiamy_1.0_amd64.deb)
 - Release: **Fiamy v1.0.2 – Linux installer beta 🎧**
+- Refreshed package date: **April 23, 2026**
 
 - Branch: **`linux-qt6`**
 - Installer format: **`.deb`**

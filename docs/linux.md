@@ -10,6 +10,7 @@ This guide summarizes the state of the `linux-qt6` branch.
 - working file picker
 - local audio cache
 - Linux-adapted visualizer
+- smoother visualizer tuned for playlist-heavy usage
 
 ## Cache
 
@@ -40,6 +41,16 @@ sudo apt install ./dist/linux-deb/fiamy_1.0_amd64.deb
 ```
 
 The package includes the application binary, desktop file, icon, and bundled `yt-dlp`.
+
+## Latest package refresh
+
+The latest Linux `.deb` was rebuilt on **April 23, 2026** from branch `linux-qt6`.
+
+Included in this refresh:
+
+- reduced visualizer CPU cost
+- slower / smoother bar motion
+- refreshed Debian package asset for the current Linux beta release
 
 ## Recommended minimal flow
 
