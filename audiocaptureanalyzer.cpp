@@ -4,6 +4,7 @@
 #include <QMediaPlayer>
 #include <QAudioBufferOutput>
 #include <QAudioFormat>
+#include <QDateTime>
 #include <type_traits>
 
 #ifdef Q_OS_WIN
@@ -18,6 +19,7 @@ AudioCaptureAnalyzer::AudioCaptureAnalyzer(QObject *parent)
 #endif
     , m_audioBufferOutput(nullptr)
     , m_isRunning(false)
+    , m_lastEmitMs(0)
 {
     resetSpectrum(0.0f);
 }
@@ -170,68 +172,54 @@ void AudioCaptureAnalyzer::dataCallback(ma_device* pDevice, void* pOutput,
     if (!analyzer || !pInput || frameCount == 0) return;
 
     const float* samples = static_cast<const float*>(pInput);
-    QList<float> monoSamples;
-    monoSamples.reserve(FFT_SIZE);
+    float monoSamples[FFT_SIZE];
+    int monoCount = 0;
 
-    for (unsigned int i = 0; i < frameCount && monoSamples.size() < FFT_SIZE; ++i) {
-        monoSamples.append((samples[i * 2] + samples[i * 2 + 1]) * 0.5f);
+    for (unsigned int i = 0; i < frameCount && monoCount < FFT_SIZE; ++i) {
+        monoSamples[monoCount++] = (samples[i * 2] + samples[i * 2 + 1]) * 0.5f;
     }
 
-    analyzer->calculateFFT(monoSamples.constData(), monoSamples.size());
+    analyzer->calculateFFT(monoSamples, monoCount);
 }
 #endif
 
 void AudioCaptureAnalyzer::calculateFFT(const float* samples, int count)
 {
-    if (!samples || count < 64) return; // Muy pocas muestras
-
-    const int N = qMin(count, FFT_SIZE);
-    QList<float> magnitudes;
-    magnitudes.reserve(N / 2);
-
-    // DFT simple (solo calculamos la mitad - frecuencias positivas)
-    for (int k = 0; k < N / 2; ++k) {
-        float real = 0.0f;
-        float imag = 0.0f;
-
-        for (int n = 0; n < N; ++n) {
-            float window = hammingWindow(n, N);
-            float angle = -2.0f * M_PI * k * n / N;
-            real += samples[n] * window * qCos(angle);
-            imag += samples[n] * window * qSin(angle);
-        }
-
-        float magnitude = qSqrt(real * real + imag * imag) / N;
-        magnitudes.append(magnitude);
+    if (!samples || count < 64) {
+        return;
     }
 
-    if (magnitudes.isEmpty()) return;
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    const qint64 lastEmit = m_lastEmitMs.load(std::memory_order_relaxed);
+    if ((nowMs - lastEmit) < 33) {
+        return;
+    }
 
-    // Agrupar frecuencias en SPECTRUM_SIZE bandas
+    const int sampleCount = qMin(count, FFT_SIZE);
     QVariantList newSpectrum;
-    const int bandsPerBar = qMax(1, magnitudes.size() / SPECTRUM_SIZE);
+    newSpectrum.reserve(SPECTRUM_SIZE);
 
     for (int i = 0; i < SPECTRUM_SIZE; ++i) {
-        float sum = 0.0f;
-        int bandCount = 0;
+        const float startRatio = qPow(float(i) / SPECTRUM_SIZE, 1.8f);
+        const float endRatio = qPow(float(i + 1) / SPECTRUM_SIZE, 1.8f);
 
-        for (int j = 0; j < bandsPerBar; ++j) {
-            int idx = i * bandsPerBar + j;
-            if (idx < magnitudes.size()) {
-                sum += magnitudes[idx];
-                bandCount++;
-            }
+        int startIdx = qBound(0, int(startRatio * sampleCount), sampleCount - 1);
+        int endIdx = qBound(startIdx + 1, int(endRatio * sampleCount), sampleCount);
+
+        float sum = 0.0f;
+        int sampleCounter = 0;
+
+        for (int j = startIdx; j < endIdx; ++j) {
+            float weighted = qAbs(samples[j]) * hammingWindow(j - startIdx, endIdx - startIdx);
+            sum += weighted;
+            sampleCounter++;
         }
 
-        float avg = bandCount > 0 ? sum / bandCount : 0.0f;
+        float avg = sampleCounter > 0 ? sum / sampleCounter : 0.0f;
+        avg *= (1.0f + (float(i) / SPECTRUM_SIZE) * 0.35f);
+        avg = qBound(0.0f, avg * 8.0f, 1.0f);
+        avg = qPow(avg, 0.7f);
 
-        // Normalizar y escalar para visualización
-        avg = qBound(0.0f, avg * 50.0f, 1.0f);
-
-        // Aplicar escala logarítmica para mejor visualización
-        avg = qPow(avg, 0.6f);
-
-        // Noise gate para que en silencio quede quieto
         if (avg < 0.035f) {
             avg = 0.0f;
         }
@@ -239,13 +227,15 @@ void AudioCaptureAnalyzer::calculateFFT(const float* samples, int count)
         newSpectrum.append(avg);
     }
 
-    // Actualizar spectrum de forma thread-safe
-    QMutexLocker locker(&m_mutex);
-    m_spectrum = newSpectrum;
-    locker.unlock();
+    {
+        QMutexLocker locker(&m_mutex);
+        m_spectrum = newSpectrum;
+    }
 
+    m_lastEmitMs.store(nowMs, std::memory_order_relaxed);
     emit spectrumChanged();
 }
+
 #ifndef Q_OS_WIN
 void AudioCaptureAnalyzer::handleAudioBuffer(const QAudioBuffer &buffer)
 {
@@ -316,5 +306,8 @@ void AudioCaptureAnalyzer::handleAudioBuffer(const QAudioBuffer &buffer)
 
 float AudioCaptureAnalyzer::hammingWindow(int n, int N)
 {
+    if (N <= 1) {
+        return 1.0f;
+    }
     return 0.54f - 0.46f * qCos(2.0f * M_PI * n / (N - 1));
 }

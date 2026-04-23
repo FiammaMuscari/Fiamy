@@ -7,10 +7,9 @@
 #include <QPointer>
 #include <QVariant>
 #include <QAudioBuffer>
-
+#include <atomic>
 
 #ifdef Q_OS_WIN
-// Forward declaration
 typedef struct ma_device ma_device;
 #endif
 
@@ -50,7 +49,6 @@ private:
 #ifdef Q_OS_WIN
     static void dataCallback(ma_device* pDevice, void* pOutput,
                              const void* pInput, unsigned int frameCount);
-
     ma_device* m_device;
 #endif
     QPointer<QMediaPlayer> m_player;
@@ -58,9 +56,10 @@ private:
     QVariantList m_spectrum;
     mutable QMutex m_mutex;
     bool m_isRunning;
+    std::atomic<qint64> m_lastEmitMs;
 
     static const int SPECTRUM_SIZE = 16;
-    static const int FFT_SIZE = 1024;
+    static const int FFT_SIZE = 512;
 };
 
 #endif // AUDIOCAPTUREANALYZER_H
