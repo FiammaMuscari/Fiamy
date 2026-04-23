@@ -40,6 +40,9 @@ Item {
                 width: (barsContainer.width - (barCount - 1) * barRow.spacing) / barCount
                 height: parent.height
                 targetHeight: {
+                    if (!barsContainer.isPlaying) {
+                        return 0
+                    }
                     if (spectrum && spectrum[index] !== undefined) {
                         return spectrum[index]
                     }

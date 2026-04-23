@@ -3,9 +3,12 @@ project(Fiamy VERSION 1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.10 REQUIRED COMPONENTS
+include(GNUInstallDirs)
+
+find_package(Qt6 6.5 REQUIRED COMPONENTS
     Core
     Gui
+    Network
     Qml
     Quick
     QuickControls2
@@ -49,6 +52,10 @@ qt_add_executable(Fiamy
     ${SRC}
     ${HEADERS}
     ${THIRD_PARTY_HEADERS}
+)
+
+set_target_properties(Fiamy PROPERTIES
+    OUTPUT_NAME "fiamy"
 )
 
 if(WIN32)
@@ -117,12 +124,33 @@ target_include_directories(miniaudio INTERFACE
 target_link_libraries(Fiamy PRIVATE
     Qt6::Core
     Qt6::Gui
+    Qt6::Network
     Qt6::Qml
     Qt6::Quick
     Qt6::QuickControls2
     Qt6::Multimedia
     miniaudio
 )
+
+install(TARGETS Fiamy
+    BUNDLE DESTINATION .
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+if(UNIX AND EXISTS "${CMAKE_SOURCE_DIR}/yt-dlp")
+    install(PROGRAMS "${CMAKE_SOURCE_DIR}/yt-dlp"
+        DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endif()
+
+if(QT_VERSION VERSION_GREATER_EQUAL 6.3)
+    qt_generate_deploy_app_script(
+        TARGET Fiamy
+        OUTPUT_SCRIPT deploy_script
+        NO_UNSUPPORTED_PLATFORM_ERROR
+    )
+    install(SCRIPT ${deploy_script})
+endif()
 
 if(WIN32)
     if(EXISTS "${CMAKE_SOURCE_DIR}/yt-dlp.exe")
@@ -134,5 +162,14 @@ if(WIN32)
         )
     else()
         message(STATUS "yt-dlp.exe no encontrado - se descargará automáticamente al ejecutar")
+    endif()
+elseif(UNIX)
+    if(EXISTS "${CMAKE_SOURCE_DIR}/yt-dlp")
+        add_custom_command(TARGET Fiamy POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_SOURCE_DIR}/yt-dlp"
+                "$<TARGET_FILE_DIR:Fiamy>/yt-dlp"
+            COMMENT "Copiando yt-dlp al directorio de salida"
+        )
     endif()
 endif()

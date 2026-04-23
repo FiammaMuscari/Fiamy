@@ -19,12 +19,19 @@ Rectangle {
 
     AudioCaptureAnalyzer {
         id: audioCapture
+        function bindPlayer() {
+            var mediaPlayer = root.playerManager ? root.playerManager.mediaPlayer : null
+            attachToPlayer(mediaPlayer)
+        }
         Component.onCompleted: {
+            bindPlayer()
             start()
             console.log("🎤 AudioCapture ")
         }
         Component.onDestruction: stop()
     }
+
+    onPlayerManagerChanged: audioCapture.bindPlayer()
 
     // 5️⃣ CANVAS CON GRID ESTÁTICO (sin animación)
     Canvas {

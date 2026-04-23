@@ -1,8 +1,9 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import QtMultimedia
-import Qt.labs.platform
+import QtCore
 import QtQuick.Window
 import Fiamy 1.0
 
@@ -179,6 +180,8 @@ Window {
             }
 
             console.log("➕ Agregando stream:", displayName)
+            console.log("   🔗 URL/Ruta:", newSong.url)
+            console.log("   📦 Playlist antes:", playlist.length)
 
             var tempPlaylist = playlist
             var insertPos
@@ -197,6 +200,7 @@ Window {
             playlistCount = playlist.length
 
             console.log("✅ Stream agregado. Total en cola:", playlistCount)
+            console.log("   📦 Playlist después:", playlist.length)
 
             if (currentIndex < 0) {
                 console.log("▶️ Iniciando reproducción automática")
@@ -264,7 +268,18 @@ Window {
             if (index >= 0 && index < playlistCount) {
                 currentIndex = index
                 player.stop()
-                player.source = playlist[index].url
+                var rawUrl = playlist[index].url ? playlist[index].url.toString() : ""
+                console.log("▶️ playSong rawUrl:", rawUrl)
+                if (rawUrl.startsWith("/") || rawUrl.match(/^[A-Za-z]:[\\/]/)) {
+                    var normalized = rawUrl.replace(/\\/g, "/")
+                    if (!normalized.startsWith("/")) {
+                        normalized = "/" + normalized
+                    }
+                    player.source = "file://" + encodeURI(normalized)
+                } else {
+                    player.source = rawUrl
+                }
+                console.log("▶️ player.source:", player.source)
                 player.play()
             }
         }
@@ -818,6 +833,10 @@ Window {
             id: playerCard
             anchors.fill: parent
             playerManager: playerManager
+            onAddFilesRequested: {
+                console.log("📂 Abriendo selector de archivos...")
+                fileDialog.open()
+            }
         }
     }
 
@@ -831,21 +850,20 @@ Window {
         visible: !isMinimizedMode
     }
 
-    Connections {
-        target: playerCard
-        function onAddFilesRequested() {
-            fileDialog.open()
-        }
-    }
-
     FileDialog {
         id: fileDialog
         title: "Selecciona archivos MP3"
         nameFilters: ["Audio files (*.mp3 *.wav *.m4a *.ogg *.flac)"]
         fileMode: FileDialog.OpenFiles
+        currentFolder: StandardPaths.standardLocations(StandardPaths.DownloadLocation)[0]
 
         onAccepted: {
-            playerManager.addFiles(fileDialog.files)
+            console.log("📂 Archivos elegidos:", fileDialog.selectedFiles)
+            playerManager.addFiles(fileDialog.selectedFiles)
+        }
+
+        onRejected: {
+            console.log("📂 Selector cancelado")
         }
     }
 }

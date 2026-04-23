@@ -17,6 +17,8 @@ ColumnLayout {
 
     property YoutubeDownloader youtubeDownloader: YoutubeDownloader {}
     property string statusMessage: "Paste YouTube URL here..."
+    property int successfulDownloads: 0
+    property int failedDownloads: 0
 
     // Fila principal con input y botón
     RowLayout {
@@ -55,6 +57,12 @@ ColumnLayout {
 
             Component.onCompleted: {
                 youtubeInput.forceActiveFocus()
+            }
+
+            Shortcut {
+                sequences: [StandardKey.Paste, "Shift+Insert"]
+                enabled: youtubeInput.activeFocus
+                onActivated: youtubeInput.paste()
             }
 
             // Clic derecho para pegar y procesar
@@ -220,9 +228,12 @@ ColumnLayout {
         function onAudioReady(url, title, author) {
             var urlStr = String(url)
             console.log("✅ Listo:", title, "by", author)
+            console.log("📁 Ruta recibida:", urlStr)
 
             if (root.playerManager) {
-                root.playerManager.addStreamToPlaylist(urlStr, title, author)
+                console.log("📥 Cola antes:", root.playerManager.playlistCount)
+                root.playerManager.addStreamToPlaylist(urlStr, title, author, root.totalToDownload > 1)
+                console.log("📥 Cola después:", root.playerManager.playlistCount)
             }
 
             if (totalToDownload <= 1) {
@@ -236,6 +247,8 @@ ColumnLayout {
             isDownloadingPlaylist = false
             downloadedCount = 0
             totalToDownload = 0
+            successfulDownloads = 0
+            failedDownloads = 0
             statusMessage = "❌ " + error
             errorTimer.restart()
         }
@@ -249,10 +262,29 @@ ColumnLayout {
             downloadedCount = downloaded
             totalToDownload = total
             isDownloadingPlaylist = (total > 1)
+        }
 
-            if (downloaded >= total && total > 0) {
-                isDownloadingPlaylist = false
-                statusMessage = "✅ " + total + " songs added!"
+        function onDownloadFinishedSummary(succeeded, failed, total) {
+            successfulDownloads = succeeded
+            failedDownloads = failed
+            isDownloadingPlaylist = false
+
+            if (total <= 1) {
+                if (succeeded > 0) {
+                    statusMessage = "✅ Added!"
+                    successTimer.restart()
+                }
+                return
+            }
+
+            if (failed === 0) {
+                statusMessage = "✅ " + succeeded + " songs added!"
+                successTimer.restart()
+            } else if (succeeded === 0) {
+                statusMessage = "❌ No songs added"
+                errorTimer.restart()
+            } else {
+                statusMessage = "⚠️ " + succeeded + " added, " + failed + " failed"
                 successTimer.restart()
             }
         }
@@ -265,6 +297,8 @@ ColumnLayout {
             statusMessage = "Paste YouTube URL here..."
             downloadedCount = 0
             totalToDownload = 0
+            successfulDownloads = 0
+            failedDownloads = 0
         }
     }
 
@@ -275,6 +309,8 @@ ColumnLayout {
             statusMessage = "Paste YouTube URL here..."
             downloadedCount = 0
             totalToDownload = 0
+            successfulDownloads = 0
+            failedDownloads = 0
         }
     }
 

@@ -12,11 +12,24 @@ Item {
     property real smoothingFactor: 0.7
     property real peakDecay: 0.95
 
+    onIsPlayingChanged: {
+        if (!root.isPlaying) {
+            root.targetHeight = 0
+            root.peakHeight = 0
+        }
+    }
+
     Timer {
         interval: 16  // 60 FPS
         running: true
         repeat: true
         onTriggered: {
+            if (!root.isPlaying && root.smoothedHeight < 0.002) {
+                root.smoothedHeight = 0
+                root.peakHeight = 0
+                return
+            }
+
             // Suavizar altura
             root.smoothedHeight = root.smoothedHeight * root.smoothingFactor +
                                   root.targetHeight * (1 - root.smoothingFactor)
@@ -35,8 +48,9 @@ Item {
         id: bar
         anchors.bottom: parent.bottom
         width: parent.width
-        height: Math.max(2, parent.height * root.smoothedHeight)
+        height: root.smoothedHeight <= 0 ? 0 : Math.max(2, parent.height * root.smoothedHeight)
         radius: 3
+        visible: height > 0
 
         gradient: Gradient {
             GradientStop { position: 0.0; color: "#ff0080" }

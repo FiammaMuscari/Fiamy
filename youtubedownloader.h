@@ -7,11 +7,14 @@
 #include <QQueue>
 #include <QMap>
 #include <QDateTime>
+#include <QDataStream>
 
 struct CacheEntry
 {
     QString videoId;
     QString filePath;
+    QString title;
+    QString author;
     qint64 fileSize;
     QDateTime lastAccessed;
 };
@@ -45,6 +48,7 @@ signals:
     void errorOccurred(const QString &error);
     void progressUpdate(const QString &message);
     void downloadCountChanged(int current, int total);
+    void downloadFinishedSummary(int succeeded, int failed, int total);
     void ytdlpDownloading(const QString &message);
 
 private slots:
@@ -58,7 +62,8 @@ private slots:
 private:
     void loadCacheIndex();
     void saveCacheIndex();
-    void updateCacheEntry(const QString &videoId, const QString &filePath, qint64 size);
+    void updateCacheEntry(const QString &videoId, const QString &filePath,
+                          const QString &title, const QString &author, qint64 size);
     void calculateCurrentCacheSize();
     void cleanOldestEntries(qint64 bytesNeeded);
     void downloadYtDlp();
@@ -67,8 +72,12 @@ private:
     QString extractVideoId(const QString &url);
     QString extractPlaylistId(const QString &url);
     QString cleanUrlForPlaylist(const QString &url);
-    QString ensureAudioCacheDir();
+    QString ytDlpStatePath() const;
+    QString ensureAudioCacheDir() const;
+    QString buildCacheFilePath(const DownloadTask &task) const;
+    QString resolveDownloadedFilePath(const QString &videoId) const;
     bool isPlaylistUrl(const QString &url);
+    bool usesBundledYtDlp() const;
     void startNextDownload();
 
     QString m_ytdlpPath;
@@ -85,6 +94,8 @@ private:
     bool m_isPlaylist;
     int m_downloadedCount;
     int m_totalToDownload;
+    int m_successfulDownloads;
+    int m_failedDownloads;
 };
 
 #endif

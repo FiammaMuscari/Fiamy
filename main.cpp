@@ -1,10 +1,11 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QtQuickControls2>
-#include <QProcess>
-#include <QTimer>
+#include <QFile>
+#include <QFileInfo>
 #include <QIcon>
 #include <QQuickWindow>
+#include <QTimer>
 #include "audiocaptureanalyzer.h"
 #include "youtubedownloader.h"
 
@@ -14,22 +15,20 @@
 #include <QDebug>
 #endif
 
-void updateYtDlp() {
-    QString ytdlpPath = QCoreApplication::applicationDirPath() + "/yt-dlp.exe";
-    QProcess::execute(ytdlpPath, QStringList() << "-U");
-}
-
 int main(int argc, char *argv[])
 {
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+#endif
+#ifdef Q_OS_WIN
     QCoreApplication::setAttribute(Qt::AA_UseOpenGLES);
+#endif
+
+    QCoreApplication::setOrganizationName("Fiamy");
+    QCoreApplication::setApplicationName("Fiamy");
+
     QGuiApplication app(argc, argv);
     app.setWindowIcon(QIcon(":/pink.ico"));
-
-    // Actualizar yt-dlp al iniciar
-    QTimer::singleShot(1000, []() {
-        updateYtDlp();
-    });
 
     // Estilo mínimo
     QQuickStyle::setStyle("Basic");
