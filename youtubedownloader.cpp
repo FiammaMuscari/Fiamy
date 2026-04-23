@@ -421,18 +421,17 @@ QString YoutubeDownloader::resolveDownloadedFilePath(const QString &videoId) con
     }
 
     QDir dir(cacheDirPath);
-    const QFileInfoList matches = dir.entryInfoList(
-        QStringList() << (videoId + ".*"),
-        QDir::Files,
-        QDir::Time
-    );
+    const QFileInfoList files = dir.entryInfoList(QDir::Files, QDir::Time);
 
-    for (const QFileInfo &fi : matches) {
+    for (const QFileInfo &fi : files) {
         const QString name = fi.fileName();
         if (name.endsWith(".part") || name.endsWith(".ytdl") || name.endsWith(".tmp")) {
             continue;
         }
-        return fi.absoluteFilePath();
+
+        if (name.contains("[" + videoId + "]") || name.startsWith(videoId + ".")) {
+            return fi.absoluteFilePath();
+        }
     }
 
     return expectedMp3;
