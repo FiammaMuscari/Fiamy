@@ -1,7 +1,7 @@
 # 🎧 Fiamy
 
-Fiamy es un reproductor MP3/Youtube hecho con **Qt 6 + QML + C++**.  
-Este repo ahora queda organizado para distinguir mejor el flujo de **Windows** y **Linux** sin duplicar todo el proyecto 💿
+Fiamy is an MP3/YouTube player built with **Qt 6 + QML + C++**.  
+This repository is organized to clearly separate the **Windows** and **Linux** flows without duplicating the whole project 💿
 
 <div align="center">
 
@@ -11,65 +11,65 @@ Este repo ahora queda organizado para distinguir mejor el flujo de **Windows** y
 
 </div>
 
-## 🌿 Ramas del proyecto
+## 🌿 Project branches
 
-- **`linux-qt6`** → rama activa para Linux / Qt6
-- **`windows-legacy`** → base preservada del flujo Windows
-- **`main`** → rama general / referencia del repo
+- **`linux-qt6`** → active Linux / Qt6 branch
+- **`windows-legacy`** → preserved Windows flow
+- **`main`** → general reference branch
 
-> Si vas a trabajar en Linux, usa **`linux-qt6`**.  
-> Si necesitas revisar el comportamiento histórico de Windows, usa **`windows-legacy`**.
+> If you are working on Linux, use **`linux-qt6`**.  
+> If you need the historical Windows behavior, use **`windows-legacy`**.
 
-## ✨ Qué hace Fiamy
+## ✨ What Fiamy does
 
-- 🎵 Reproduce archivos de audio locales
-- 🔗 Agrega canciones desde links de YouTube
-- 📋 Descarga playlists a la cola
-- 📦 Cachea audio temporalmente
-- 📌 Tiene mini-player
-- 🌈 Incluye visualizer reactivo
+- 🎵 Plays local audio files
+- 🔗 Adds songs from YouTube links
+- 📋 Queues full playlists for download
+- 📦 Temporarily caches audio
+- 📌 Includes a mini-player
+- 🌈 Includes a reactive visualizer
 
-## 📁 Organización del repo
+## 📁 Repository layout
 
 ```text
 .
-├── components/          # UI QML compartida
-├── thirdparty/          # dependencias embebidas
-├── docs/                # notas por plataforma
+├── components/          # shared QML UI
+├── thirdparty/          # embedded dependencies
+├── docs/                # platform notes
 ├── platform/
-│   ├── linux/           # notas y assets específicos de Linux
-│   └── windows/         # notas y assets específicos de Windows
+│   ├── linux/           # Linux-specific notes and assets
+│   └── windows/         # Windows-specific notes and assets
 ├── packaging/
-│   ├── linux/           # futuro empaquetado Linux
-│   └── windows/         # futuro empaquetado Windows
+│   ├── linux/           # future Linux packaging
+│   └── windows/         # future Windows packaging
 ├── CMakeLists.txt
 ├── Main.qml
 └── *.cpp / *.h
 ```
 
-## 🐧 Linux (rama `linux-qt6`)
+## 🐧 Linux (branch `linux-qt6`)
 
-### Estado actual
+### Current status
 
-- ✅ reproducción local
-- ✅ integración YouTube con `yt-dlp`
-- ✅ cache local
-- ✅ visualizer adaptado a Linux
-- ✅ selector de archivos funcionando
+- ✅ local playback
+- ✅ YouTube integration with `yt-dlp`
+- ✅ local cache
+- ✅ Linux-adapted visualizer
+- ✅ working file picker
 
-### Cache de audio
+### Audio cache
 
-Mientras Fiamy está corriendo en Linux, el cache se guarda en:
+While Fiamy is running on Linux, the cache is stored in:
 
 ```text
-/home/<tu-usuario>/.local/share/Fiamy/Fiamy/cache/audio
+/home/<your-user>/.local/share/Fiamy/Fiamy/cache/audio
 ```
 
-En esta rama los archivos nuevos cacheados se guardan con nombre legible cuando es posible.
+In this branch, newly cached files are saved with readable names whenever possible.
 
-## 🪟 Windows (rama `windows-legacy`)
+## 🪟 Windows (branch `windows-legacy`)
 
-La rama Windows queda preservada como referencia del flujo anterior y del empaquetado específico de ese sistema.
+The Windows branch is preserved as a reference for the historical flow and system-specific packaging.
 
 ## 🛠️ Stack
 
@@ -79,9 +79,9 @@ La rama Windows queda preservada como referencia del flujo anterior y del empaqu
 - **CMake**
 - **yt-dlp**
 - **FFmpeg / Qt Multimedia**
-- **miniaudio** (según plataforma)
+- **miniaudio** (platform-dependent)
 
-## ▶️ Desarrollo local
+## ▶️ Local development
 
 ### Linux
 
@@ -93,9 +93,9 @@ cmake --build build-linux -j4
 
 ### Windows
 
-Usar la rama `windows-legacy` y abrir el proyecto en Qt Creator con su kit correspondiente.
+Use the `windows-legacy` branch and open the project in Qt Creator with the corresponding kit.
 
-## 🗂️ Documentación
+## 🗂️ Documentation
 
 - `docs/linux.md`
 - `docs/windows.md`
@@ -104,11 +104,11 @@ Usar la rama `windows-legacy` y abrir el proyecto en Qt Creator con su kit corre
 - `packaging/linux/README.md`
 - `packaging/windows/README.md`
 
-## 🚀 Próximo paso
+## 🚀 Next step
 
-El siguiente paso natural del repo es preparar:
+The next natural step for the repository is to prepare:
 
-- empaquetado Linux
-- empaquetado Windows
-- instaladores con las dependencias Qt6 necesarias
+- Linux packaging
+- Windows packaging
+- installers with the required Qt6 dependencies
 

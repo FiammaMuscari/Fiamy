@@ -1,23 +1,24 @@
 # 🪟 Windows
 
-Esta guía queda como referencia para la rama `windows-legacy`.
+This guide is kept as a reference for the `windows-legacy` branch.
 
-## Objetivo
+## Goal
 
-Preservar el flujo histórico de Windows sin mezclarlo con los cambios Linux.
+Preserve the historical Windows flow without mixing it with the Linux changes.
 
-## Próximo uso
+## Next use
 
-- revisar qué partes siguen vigentes
-- separar deploy de Windows
-- documentar dependencias Qt6 / DLLs necesarias
+- review which parts are still relevant
+- separate Windows deployment
+- document the required Qt6 / DLL dependencies
 
-## Flujo mínimo recomendado
+## Recommended minimal flow
 
-En Windows, la idea es usar `windeployqt` sobre el ejecutable release:
+On Windows, the idea is to use `windeployqt` on the release executable:
 
 ```bat
 packaging\windows\deploy-windows.bat
 ```
 
-Ese script queda como base para el empaquetado posterior.
+That script is the base for the later packaging step.
+

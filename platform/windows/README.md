@@ -1,10 +1,10 @@
 # Platform / Windows
 
-Espacio reservado para assets, notas o scripts específicos de Windows.
+Reserved space for Windows-specific assets, notes, or scripts.
 
-Ejemplos futuros:
+Future examples:
 
-- iconos
-- recursos del instalador
-- helpers de `windeployqt`
+- icons
+- installer resources
+- `windeployqt` helpers
 

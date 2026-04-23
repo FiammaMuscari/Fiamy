@@ -1,14 +1,15 @@
 # Packaging / Linux
 
-Carpeta reservada para el empaquetado Linux.
+Reserved folder for Linux packaging.
 
-Posibles formatos:
+Possible formats:
 
 - AppImage
 - `.deb`
-- tarball portable
+- portable tarball
 
-## Scripts incluidos
+## Included scripts
 
-- `build-release.sh` → compila release
-- `package-portable.sh` → arma una carpeta portable inicial
+- `build-release.sh` → builds a release binary
+- `package-portable.sh` → creates an initial portable folder
+

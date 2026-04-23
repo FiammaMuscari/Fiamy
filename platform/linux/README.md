@@ -1,11 +1,11 @@
 # Platform / Linux
 
-Espacio reservado para assets, notas o scripts específicos de Linux.
+Reserved space for Linux-specific assets, notes, or scripts.
 
-Ejemplos futuros:
+Future examples:
 
 - `.desktop`
-- iconos
-- integración con launcher
-- scripts de deploy
+- icons
+- launcher integration
+- deployment scripts
 

@@ -1,30 +1,30 @@
 # 🐧 Linux
 
-Esta guía resume el estado de la rama `linux-qt6`.
+This guide summarizes the state of the `linux-qt6` branch.
 
-## Estado
+## Status
 
-- Qt 6 + QML funcionando
-- `yt-dlp` administrado por la app
-- selector de archivos funcionando
-- cache local de audio
-- visualizer adaptado a Linux
+- Qt 6 + QML working
+- app-managed `yt-dlp`
+- working file picker
+- local audio cache
+- Linux-adapted visualizer
 
 ## Cache
 
-Ruta típica:
+Typical path:
 
 ```text
 ~/.local/share/Fiamy/Fiamy/cache/audio
 ```
 
-## Pendiente
+## Pending
 
-- definir formato de distribución final
-- empaquetado de Qt6 para release
-- revisar instalador / AppImage / `.deb`
+- define the final distribution format
+- package Qt6 for release
+- review installer / AppImage / `.deb`
 
-## Flujo mínimo recomendado
+## Recommended minimal flow
 
 ### Build release
 
@@ -32,10 +32,11 @@ Ruta típica:
 ./packaging/linux/build-release.sh
 ```
 
-### Carpeta portable
+### Portable folder
 
 ```bash
 ./packaging/linux/package-portable.sh
 ```
 
-Esto genera una carpeta `dist/fiamy-linux-portable/` lista para revisar.
+This creates a `dist/fiamy-linux-portable/` folder ready to review.
+

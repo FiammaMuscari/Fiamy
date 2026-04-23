@@ -1,13 +1,14 @@
 # Packaging / Windows
 
-Carpeta reservada para el empaquetado Windows.
+Reserved folder for Windows packaging.
 
-Posibles contenidos:
+Possible contents:
 
-- instalador
-- scripts de deploy
-- lista de DLLs Qt6 necesarias
+- installer
+- deployment scripts
+- list of required Qt6 DLLs
 
-## Script incluido
+## Included script
 
-- `deploy-windows.bat` → base para ejecutar `windeployqt`
+- `deploy-windows.bat` → base script for running `windeployqt`
+
