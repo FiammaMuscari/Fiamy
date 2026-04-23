@@ -112,10 +112,14 @@ The project now keeps **Windows** and **Linux** releases side by side, without r
 ### 🪟 Windows release
 
 - Release page: <https://github.com/FiammaMuscari/Fiamy/releases>
-- Current public installer: **Fiamy v1.0.1**
-- Assets include the Windows installer package and source archives.
+- Latest installer: [**Fiamy_Setup-1.0.1.exe**](https://github.com/FiammaMuscari/Fiamy/releases/download/v1.0.1/Fiamy_Setup-1.0.1.exe)
+- Release: **Fiamy v1.0.1 – Stability & packaging fixes 🎧**
 
 ### 🐧 Linux release
+
+- Release page: <https://github.com/FiammaMuscari/Fiamy/releases/tag/v1.0.2-linux-beta>
+- Latest installer: [**fiamy_1.0_amd64.deb**](https://github.com/FiammaMuscari/Fiamy/releases/download/v1.0.2-linux-beta/fiamy_1.0_amd64.deb)
+- Release: **Fiamy v1.0.2 – Linux installer beta 🎧**
 
 - Branch: **`linux-qt6`**
 - Installer format: **`.deb`**
