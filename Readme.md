@@ -1,83 +1,73 @@
-# 🎧 Fiamy MP3 Youtube Player
+# 🎧 Fiamy
 
+Fiamy is an MP3 / YouTube desktop player built with **Qt + QML + C++**.
 
+This repository keeps the current Linux work and the historical Windows flow side by side:
 
-https://github.com/user-attachments/assets/527a1af5-66ef-4c0c-b44b-d12c9d5a331a
+- **`linux-qt6`** → active Linux branch
+- **`windows-legacy`** → preserved Windows branch
+- **`main`** → project overview / shared entry point
 
+## 📦 Downloads
 
-
-A lightweight desktop MP3 player built with **Qt + C++**, focused on streaming audio from **YouTube** in a smooth and modern way.
-
-
-[![License: MIT](https://img.shields.io/badge/License-Open_Source-green?style=for-the-badge)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows-blue?style=for-the-badge&logo=windows)](https://github.com/FiammaMuscari/Fiamy/releases)
-[![Platform](https://img.shields.io/badge/Platform-Linux-2ea043?style=for-the-badge&logo=linux)](https://github.com/FiammaMuscari/Fiamy/releases/tag/v1.0.2-linux-beta)
-<div align="center">
-
-<img width="556" height="715" alt="image (21)" src="https://github.com/user-attachments/assets/72b66244-c2a2-4cd0-86d4-d05e65d4cbef" />
-
-<img width="508" height="696" alt="image (22)" src="https://github.com/user-attachments/assets/5358347e-c7af-44fd-8051-f3d145d245c6" />
-</div>
-
-## 📦 Download
-
-<table>
-  <tr>
-    <th>Platform</th>
-    <th>Installer</th>
-  </tr>
-  <tr>
-    <td>Windows</td>
-    <td><a href="https://github.com/FiammaMuscari/Fiamy/releases/download/v1.0.1/Fiamy_Setup-1.0.1.exe">⬇️ Download Fiamy v1.0.1 (Windows)</a></td>
-  </tr>
-  <tr>
-    <td>Linux</td>
-    <td><a href="https://github.com/FiammaMuscari/Fiamy/releases/download/v1.0.2-linux-beta/fiamy_1.0_amd64.deb">⬇️ Download Fiamy v1.0.2 (Linux)</a></td>
-  </tr>
-</table>
-
-<p><em>Free &amp; Open Source • No ads • No tracking</em></p>
+| Platform | Download | Notes |
+|---|---|---|
+| Windows | [Fiamy_Setup-1.0.1.exe](https://github.com/FiammaMuscari/Fiamy/releases/download/v1.0.1/Fiamy_Setup-1.0.1.exe) | stable Windows installer |
+| Linux | [fiamy_1.0_amd64.deb](https://github.com/FiammaMuscari/Fiamy/releases/download/v1.0.2-linux-beta/fiamy_1.0_amd64.deb) | Linux beta installer refreshed on **April 23, 2026** |
 
 ## ✨ Features
 
-- 📋 **Paste YouTube links**
-  - Right click → paste  
-  - Or paste the link and press **➕ Add**
-- 🎶 **Instant audio streaming from YouTube**
-- 📥 **Download full YouTube playlists** (keeps original order)
-- 🧲 **Drag & drop songs** inside the playback queue to reorder them
-- 📌 **Mini-player mode**
-  - Can be minimized and docked to screen edges
-- 🧠 **Smart queue management**
-- 🔄 Uses **yt-dlp** with **automatic updates configured**
-- 🎵 **Cached audio**
-  - Streamed songs are temporarily stored in:
-    ```
-    cache/audio
-    ```
-  - Cache is **automatically cleared when the app restarts**
-- 🖥️ Built with **Qt (QML) + C++**
+- local audio playback
+- YouTube link support
+- playlist queueing
+- temporary audio cache
+- mini-player mode
+- reactive visualizer
 
+## 🐧 Linux status
 
+The current Linux work lives on **`linux-qt6`**.
 
-## 🛠️ Tech Stack
+Latest Linux packaging refresh:
 
-- **Qt 6 (QML + C++)**
-- **CMake**
-- **yt-dlp**
-- **MinGW (Windows)**
+- reduced visualizer CPU usage
+- smoother / slower visualizer bars
+- refreshed `.deb` package build
+- bundled `yt-dlp` when available during packaging
 
+Install on Ubuntu / Debian based systems with:
 
+```bash
+sudo apt install ./fiamy_1.0_amd64.deb
+```
 
-## ▶️ Run locally (Windows)
+Or build locally from the Linux branch:
 
-### Option 1 — Using Qt Creator 
+```bash
+git checkout linux-qt6
+./packaging/linux/build-release.sh
+./packaging/linux/package-deb.sh
+```
 
-1. Open **Qt Creator**
-2. Go to **File → Open File or Project**
-3. Select:
-CMakeLists.txt
-4. Choose kit:
-- **Desktop Qt 6.x MinGW 64-bit**
-5. Click **Configure Project**
-6. Press ▶ **Run**
+## 🪟 Windows status
+
+The Windows installer published on GitHub is still available from the historical flow.
+
+For Windows-specific development, use:
+
+```bash
+git checkout windows-legacy
+```
+
+## 📚 Extra notes
+
+Linux packaging notes added in this branch:
+
+- `docs/linux.md`
+- `packaging/linux/README.md`
+- `platform/linux/README.md`
+
+## 🔗 Releases
+
+- All releases: <https://github.com/FiammaMuscari/Fiamy/releases>
+- Linux beta release: <https://github.com/FiammaMuscari/Fiamy/releases/tag/v1.0.2-linux-beta>
