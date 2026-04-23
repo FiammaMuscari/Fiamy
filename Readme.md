@@ -6,7 +6,7 @@ https://github.com/user-attachments/assets/527a1af5-66ef-4c0c-b44b-d12c9d5a331a
 
 
 
-A lightweight desktop MP3 player built with **Qt + C++**, focused on streaming udio from **YouTube** in a smooth and modern way.
+A lightweight desktop MP3 player built with **Qt + C++**, focused on streaming audio from **YouTube** in a smooth and modern way.
 
 
 [![License: MIT](https://img.shields.io/badge/License-Open_Source-green?style=for-the-badge)](LICENSE)
@@ -21,20 +21,22 @@ A lightweight desktop MP3 player built with **Qt + C++**, focused on streaming u
 
 ## 📦 Download
 
+<table>
+  <tr>
+    <th>Platform</th>
+    <th>Installer</th>
+  </tr>
+  <tr>
+    <td>Windows</td>
+    <td><a href="https://github.com/FiammaMuscari/Fiamy/releases/download/v1.0.1/Fiamy_Setup-1.0.1.exe">⬇️ Download Fiamy v1.0.1 (Windows)</a></td>
+  </tr>
+  <tr>
+    <td>Linux</td>
+    <td><a href="https://github.com/FiammaMuscari/Fiamy/releases/download/v1.0.2-linux-beta/fiamy_1.0_amd64.deb">⬇️ Download Fiamy v1.0.2 (Linux)</a></td>
+  </tr>
+</table>
 
-
-<div align="center">
-### Windows Installer
-
-**[⬇️ Download Fiamy v1.0.1 (Windows)](https://github.com/FiammaMuscari/Fiamy/releases/download/v1.0.1/Fiamy_Setup-1.0.1.exe)**
-
-### Linux Installer
-
-**[⬇️ Download Fiamy v1.0.2 (Linux)](https://github.com/FiammaMuscari/Fiamy/releases/download/v1.0.2-linux-beta/fiamy_1.0_amd64.deb)**
-
-*Free & Open Source • No ads • No tracking*
-
-</div>
+<p><em>Free &amp; Open Source • No ads • No tracking</em></p>
 
 ## ✨ Features
 
