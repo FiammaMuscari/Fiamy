@@ -14,22 +14,12 @@
 #include <QDebug>
 #endif
 
-void updateYtDlp() {
-    QString ytdlpPath = QCoreApplication::applicationDirPath() + "/yt-dlp.exe";
-    QProcess::execute(ytdlpPath, QStringList() << "-U");
-}
-
 int main(int argc, char *argv[])
 {
     QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
     QCoreApplication::setAttribute(Qt::AA_UseOpenGLES);
     QGuiApplication app(argc, argv);
     app.setWindowIcon(QIcon(":/pink.ico"));
-
-    // Actualizar yt-dlp al iniciar
-    QTimer::singleShot(1000, []() {
-        updateYtDlp();
-    });
 
     // Estilo mínimo
     QQuickStyle::setStyle("Basic");

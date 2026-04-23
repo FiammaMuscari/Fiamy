@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
-project(Fiamy VERSION 1.0 LANGUAGES CXX)
+project(Fiamy VERSION 1.0.2 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.10 REQUIRED COMPONENTS
+find_package(Qt6 6.9 REQUIRED COMPONENTS
     Core
     Gui
     Qml
@@ -26,7 +26,7 @@ set(QML_FILES
     Main.qml
     components/ActionButtons.qml
     components/AudioVisualizer.qml
-    components/BookmarkPlayer.qml
+    components/BookMarkPlayer.qml
     components/PlayerCard.qml
     components/PlayerControls.qml
     components/ProgressBar.qml
@@ -49,6 +49,10 @@ qt_add_executable(Fiamy
     ${SRC}
     ${HEADERS}
     ${THIRD_PARTY_HEADERS}
+)
+
+set_target_properties(Fiamy PROPERTIES
+    OUTPUT_NAME "fiamy"
 )
 
 if(WIN32)

@@ -67,32 +67,15 @@ YoutubeDownloader::YoutubeDownloader(QObject *parent)
         checkYtDlpVersion();
     }
 
-    QString cacheDir = ensureAudioCacheDir();
+    ensureAudioCacheDir();
+    loadCacheIndex();
+    calculateCurrentCacheSize();
 
-    // 🔧 LIMPIEZA COMPLETA DEL CACHE AL INICIAR
-    qDebug() << "🧹 LIMPIANDO CACHE AL INICIAR...";
-    QDir dir(cacheDir);
-
-    // Eliminar todos los MP3
-    for (const QFileInfo &fi : dir.entryInfoList(QStringList() << "*.mp3")) {
-        if (QFile::remove(fi.absoluteFilePath())) {
-            qDebug() << "   🗑️" << fi.fileName();
-        }
+    if (m_currentCacheSize > m_maxCacheSize) {
+        qDebug() << "🧹 Cache excedido al iniciar, limpiando entradas viejas";
+        cleanOldestEntries(m_currentCacheSize - m_maxCacheSize);
+        calculateCurrentCacheSize();
     }
-
-    // Eliminar índice de cache
-    QString indexPath = cacheDir + "/cache_index.dat";
-    if (QFile::exists(indexPath)) {
-        QFile::remove(indexPath);
-        qDebug() << "   🗑️ cache_index.dat";
-    }
-
-    // Reiniciar variables
-    m_cacheIndex.clear();
-    m_currentCacheSize = 0;
-
-    qDebug() << "✅ Cache limpiado completamente";
-    qDebug() << "💾 Cache: 0.0 MB / 500.0 MB";
 }
 
 YoutubeDownloader::~YoutubeDownloader()
