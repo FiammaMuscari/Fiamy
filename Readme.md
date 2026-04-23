@@ -105,6 +105,34 @@ Use the `windows-legacy` branch and open the project in Qt Creator with the corr
 - `packaging/linux/README.md`
 - `packaging/windows/README.md`
 
+## 📦 Releases
+
+The project now keeps **Windows** and **Linux** releases side by side, without removing the historical Windows assets.
+
+### 🪟 Windows release
+
+- Release page: <https://github.com/FiammaMuscari/Fiamy/releases>
+- Current public installer: **Fiamy v1.0.1**
+- Assets include the Windows installer package and source archives.
+
+### 🐧 Linux release
+
+- Branch: **`linux-qt6`**
+- Installer format: **`.deb`**
+- Build output:
+
+```text
+dist/linux-deb/fiamy_1.0_amd64.deb
+```
+
+Install it with:
+
+```bash
+sudo apt install ./dist/linux-deb/fiamy_1.0_amd64.deb
+```
+
+This Linux package includes the app, desktop entry, icon, and bundled `yt-dlp` for a smoother first run.
+
 ## 🚀 Next step
 
 The next natural step for the repository is to prepare:

@@ -25,6 +25,22 @@ Typical path:
 - package Qt6 for release
 - review installer / AppImage / `.deb`
 
+## Installation
+
+The current Linux release is distributed as a Debian package:
+
+```text
+dist/linux-deb/fiamy_1.0_amd64.deb
+```
+
+Install it with:
+
+```bash
+sudo apt install ./dist/linux-deb/fiamy_1.0_amd64.deb
+```
+
+The package includes the application binary, desktop file, icon, and bundled `yt-dlp`.
+
 ## Recommended minimal flow
 
 ### Build release
