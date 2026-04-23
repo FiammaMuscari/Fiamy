@@ -46,13 +46,32 @@ static QString bundledYtDlpPath()
 }
 
 static QString getYtDlpPath() {
-    const QString bundledPath = bundledYtDlpPath();
-
-    if (QFileInfo::exists(bundledPath)) {
-        return bundledPath;
+    const QString localPath = bundledYtDlpPath();
+    if (QFileInfo::exists(localPath)) {
+        return localPath;
     }
 
-    return bundledPath;
+    const QString packagedPath = QCoreApplication::applicationDirPath() + "/../share/fiamy/yt-dlp";
+    if (QFileInfo::exists(packagedPath)) {
+        QDir().mkpath(QFileInfo(localPath).absolutePath());
+        QFile::remove(localPath);
+        if (QFile::copy(packagedPath, localPath)) {
+#ifndef Q_OS_WIN
+            QFile::setPermissions(localPath,
+                                  QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner |
+                                  QFileDevice::ReadGroup | QFileDevice::ExeGroup |
+                                  QFileDevice::ReadOther | QFileDevice::ExeOther);
+#endif
+            return localPath;
+        }
+    }
+
+    const QString systemPath = QStandardPaths::findExecutable("yt-dlp");
+    if (!systemPath.isEmpty()) {
+        return systemPath;
+    }
+
+    return localPath;
 }
 
 static QUrl getYtDlpDownloadUrl()

@@ -139,7 +139,13 @@ install(TARGETS Fiamy
 
 if(UNIX AND EXISTS "${CMAKE_SOURCE_DIR}/yt-dlp")
     install(PROGRAMS "${CMAKE_SOURCE_DIR}/yt-dlp"
-        DESTINATION ${CMAKE_INSTALL_BINDIR}
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/fiamy
+    )
+endif()
+
+if(UNIX AND EXISTS "${CMAKE_BINARY_DIR}/yt-dlp")
+    install(PROGRAMS "${CMAKE_BINARY_DIR}/yt-dlp"
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/fiamy
     )
 endif()
 

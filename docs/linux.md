@@ -6,6 +6,7 @@ This guide summarizes the state of the `linux-qt6` branch.
 
 - Qt 6 + QML working
 - app-managed `yt-dlp`
+- bundled `yt-dlp` inside the package when available
 - working file picker
 - local audio cache
 - Linux-adapted visualizer
@@ -47,3 +48,5 @@ This creates a `dist/fiamy-linux-portable/` folder ready to review.
 ```
 
 This creates a `.deb` package in `dist/linux-deb/`.
+
+The package will also include a bundled `yt-dlp` copy when the build machine has one available in `PATH`.
