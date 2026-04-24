@@ -10,7 +10,7 @@ A lightweight desktop MP3 player built with **Qt + C++**, focused on streaming u
 
 
 [![License: MIT](https://img.shields.io/badge/License-Open_Source-green?style=for-the-badge)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows-blue?style=for-the-badge&logo=windows)](https://github.com/FiammaMuscari/Fiamy/releases)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-blue?style=for-the-badge&logo=linux)](https://github.com/FiammaMuscari/Fiamy/releases)
 <div align="center">
 
 <img width="556" height="715" alt="image (21)" src="https://github.com/user-attachments/assets/72b66244-c2a2-4cd0-86d4-d05e65d4cbef" />
@@ -20,12 +20,11 @@ A lightweight desktop MP3 player built with **Qt + C++**, focused on streaming u
 
 ## 📦 Download
 
-
-
 <div align="center">
-Windows Installer
-  
-**[⬇️ Download Fiamy v1.0.1 (Windows)](https://github.com/FiammaMuscari/Fiamy/releases/download/v1.0.1/Fiamy_Setup-1.0.1.exe)**
+
+| Windows Installer | Linux Installer |
+|---|---|
+| **[⬇️ Download Fiamy v1.0.1 (Windows)](https://github.com/FiammaMuscari/Fiamy/releases/download/v1.0.1/Fiamy_Setup-1.0.1.exe)** | **[⬇️ Download Fiamy v1.0.2 (Linux)](https://github.com/FiammaMuscari/Fiamy/releases/download/v1.0.2-linux-beta/fiamy_1.0_amd64.deb)** |
 
 *Free & Open Source • No ads • No tracking*
 
@@ -48,7 +47,7 @@ Windows Installer
     ```text
     cache/audio
     ```
-  - Cache is automatically cleared when the app restarts
+  - Cache is reused between sessions and old entries are cleaned only when needed
 - 🌈 **Reactive visualizer**
   - Linux package refreshed with lower CPU usage
   - Smoother / slower visualizer bars on `linux-qt6`
