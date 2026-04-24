@@ -37,7 +37,6 @@ A lightweight desktop MP3 player built with **Qt + C++**, focused on streaming u
   - Or paste the link and press **➕ Add**
 - 🎶 **Instant audio streaming from YouTube**
 - 📥 **Download full YouTube playlists** (keeps original order)
-- 🧲 **Drag & drop songs** inside the playback queue to reorder them
 - 📌 **Mini-player mode**
   - Can be minimized and docked to screen edges
 - 🧠 **Smart queue management**
