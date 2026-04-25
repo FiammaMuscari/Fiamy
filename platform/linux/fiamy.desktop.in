@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Fiamy
+Comment=Fiamy MP3 and YouTube player
+Exec=@CMAKE_INSTALL_FULL_BINDIR@/fiamy
+Icon=fiamy
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+StartupNotify=true

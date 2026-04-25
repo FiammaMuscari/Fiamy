@@ -17,10 +17,71 @@
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QNetworkReply>
+#include <QFileDevice>
 
-static QString getYtDlpPath() {
-    QString appPath = QCoreApplication::applicationDirPath();
-    return appPath + "/yt-dlp.exe";
+static QString appWritableDataDir()
+{
+    QString path = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (path.isEmpty()) {
+        path = QDir::homePath() + "/.local/share/Fiamy";
+    }
+    QDir().mkpath(path);
+    return path;
+}
+
+static QString bundledLinuxYtDlpPath()
+{
+#ifdef Q_OS_LINUX
+    const QString appPath = QCoreApplication::applicationDirPath();
+    const QStringList candidates = {
+        appPath + "/yt-dlp",
+        QDir(appPath).absoluteFilePath("../share/fiamy/yt-dlp"),
+        "/usr/share/fiamy/yt-dlp"
+    };
+
+    for (const QString &candidate : candidates) {
+        if (QFileInfo::exists(candidate)) {
+            return QFileInfo(candidate).absoluteFilePath();
+        }
+    }
+#endif
+    return {};
+}
+
+static QString downloadedYtDlpPath()
+{
+#ifdef Q_OS_WIN
+    return QCoreApplication::applicationDirPath() + "/yt-dlp.exe";
+#else
+    return appWritableDataDir() + "/bin/yt-dlp";
+#endif
+}
+
+static QString getYtDlpPath()
+{
+    const QString systemPath = QStandardPaths::findExecutable("yt-dlp");
+    if (!systemPath.isEmpty()) {
+        return systemPath;
+    }
+
+#ifdef Q_OS_WIN
+    return downloadedYtDlpPath();
+#else
+    const QString bundledPath = bundledLinuxYtDlpPath();
+    if (!bundledPath.isEmpty()) {
+        return bundledPath;
+    }
+    return downloadedYtDlpPath();
+#endif
+}
+
+static QUrl ytDlpDownloadUrl()
+{
+#ifdef Q_OS_WIN
+    return QUrl("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe");
+#else
+    return QUrl("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux");
+#endif
 }
 
 /* ===================== CACHE SERIALIZATION ===================== */
@@ -101,7 +162,7 @@ void YoutubeDownloader::downloadYtDlp()
     emit ytdlpDownloading("Descargando yt-dlp...");
 
     QNetworkAccessManager *manager = new QNetworkAccessManager(this);
-    QUrl url("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe");
+    QUrl url = ytDlpDownloadUrl();
 
     QNetworkRequest request(url);
     request.setRawHeader("User-Agent", "Fiamy/1.0");
@@ -118,11 +179,19 @@ void YoutubeDownloader::downloadYtDlp()
 
     connect(reply, &QNetworkReply::finished, this, [this, reply, manager]() {
         if (reply->error() == QNetworkReply::NoError) {
+            QFileInfo targetInfo(m_ytdlpPath);
+            QDir().mkpath(targetInfo.absolutePath());
+
             QFile file(m_ytdlpPath);
 
             if (file.open(QIODevice::WriteOnly)) {
                 file.write(reply->readAll());
                 file.close();
+#ifndef Q_OS_WIN
+                file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner |
+                                    QFileDevice::ReadGroup | QFileDevice::ExeGroup |
+                                    QFileDevice::ReadOther | QFileDevice::ExeOther);
+#endif
                 qDebug() << "✅ yt-dlp descargado correctamente";
                 emit ytdlpDownloading("✅ yt-dlp listo");
             } else {
@@ -141,7 +210,7 @@ void YoutubeDownloader::downloadYtDlp()
 
 void YoutubeDownloader::checkYtDlpVersion()
 {
-    QString settingsPath = QCoreApplication::applicationDirPath() + "/ytdlp_update.dat";
+    QString settingsPath = appWritableDataDir() + "/ytdlp_update.dat";
     QFile settingsFile(settingsPath);
 
     QDateTime lastCheck;
@@ -277,8 +346,7 @@ QString YoutubeDownloader::cleanUrlForPlaylist(const QString &url)
 
 QString YoutubeDownloader::ensureAudioCacheDir()
 {
-    QString projectDir = QCoreApplication::applicationDirPath();
-    QDir cacheDir(projectDir + "/cache/audio");
+    QDir cacheDir(appWritableDataDir() + "/cache/audio");
 
     if (!cacheDir.exists()) {
         cacheDir.mkpath(".");

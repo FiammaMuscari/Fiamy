@@ -3,7 +3,9 @@ project(Fiamy VERSION 1.0.2 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.9 REQUIRED COMPONENTS
+set(FIAMY_MIN_QT_VERSION "6.8" CACHE STRING "Minimum Qt version required to build Fiamy")
+
+find_package(Qt6 ${FIAMY_MIN_QT_VERSION} REQUIRED COMPONENTS
     Core
     Gui
     Qml
@@ -139,4 +141,56 @@ if(WIN32)
     else()
         message(STATUS "yt-dlp.exe no encontrado - se descargará automáticamente al ejecutar")
     endif()
+endif()
+
+if(UNIX AND NOT APPLE)
+    include(GNUInstallDirs)
+
+    set(FIAMY_LINUX_DESKTOP_TEMPLATE "${CMAKE_CURRENT_SOURCE_DIR}/platform/linux/fiamy.desktop.in")
+    set(FIAMY_LINUX_DESKTOP_FILE "${CMAKE_CURRENT_BINARY_DIR}/fiamy.desktop")
+    configure_file("${FIAMY_LINUX_DESKTOP_TEMPLATE}" "${FIAMY_LINUX_DESKTOP_FILE}" @ONLY)
+
+    install(TARGETS Fiamy RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    qt_generate_deploy_app_script(
+        TARGET Fiamy
+        OUTPUT_SCRIPT FiamyDeployScript
+        NO_UNSUPPORTED_PLATFORM_ERROR
+    )
+    install(SCRIPT "${FiamyDeployScript}")
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/pink.png"
+        DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/256x256/apps"
+        RENAME fiamy.png
+    )
+    install(FILES "${FIAMY_LINUX_DESKTOP_FILE}"
+        DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/applications"
+    )
+
+    find_program(FIAMY_YT_DLP_EXECUTABLE yt-dlp)
+    if(FIAMY_YT_DLP_EXECUTABLE)
+        install(PROGRAMS "${FIAMY_YT_DLP_EXECUTABLE}"
+            DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/fiamy"
+        )
+        message(STATUS "Bundling yt-dlp from ${FIAMY_YT_DLP_EXECUTABLE}")
+    else()
+        message(STATUS "yt-dlp no encontrado en PATH - Linux usará el auto-descargador en tiempo de ejecución")
+    endif()
+
+    set(CPACK_GENERATOR "DEB")
+    set(CPACK_PACKAGE_NAME "fiamy")
+    set(CPACK_PACKAGE_VENDOR "FiammaMuscari")
+    set(CPACK_PACKAGE_CONTACT "fiammamuscari@gmail.com")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Fiamy MP3 and YouTube player")
+    set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "fiammamuscari")
+    set(CPACK_DEBIAN_PACKAGE_SECTION "multimedia")
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+    set(CPACK_DEBIAN_FILE_NAME "DEB-DEFAULT")
+
+    set(FIAMY_DEB_DISTRO_TAG "" CACHE STRING "Optional distro suffix for generated DEB names, e.g. trixie")
+    if(FIAMY_DEB_DISTRO_TAG)
+        string(REGEX REPLACE "[^A-Za-z0-9.+-]" "-" FIAMY_DEB_DISTRO_TAG_SAFE "${FIAMY_DEB_DISTRO_TAG}")
+        set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}_${PROJECT_VERSION}_${FIAMY_DEB_DISTRO_TAG_SAFE}_${CMAKE_SYSTEM_PROCESSOR}")
+    endif()
+
+    include(CPack)
 endif()

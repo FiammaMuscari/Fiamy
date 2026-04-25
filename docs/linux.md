@@ -28,7 +28,19 @@ Typical path:
 
 ## Installation
 
-The current Linux release is distributed as a Debian package:
+Portable Linux asset:
+
+```text
+dist/linux-portable/fiamy-1.0.2-linux-portable-x86_64.tar.gz
+```
+
+Unpack it and run:
+
+```bash
+./fiamy-linux-portable/Fiamy.sh
+```
+
+Debian package asset:
 
 ```text
 dist/linux-deb/fiamy_1.0_amd64.deb
@@ -66,7 +78,10 @@ Included in this refresh:
 ./packaging/linux/package-portable.sh
 ```
 
-This creates a `dist/fiamy-linux-portable/` folder ready to review.
+This creates:
+
+- `dist/fiamy-linux-portable/`
+- `dist/linux-portable/fiamy-<version>-linux-portable-x86_64.tar.gz`
 
 ### Debian package
 

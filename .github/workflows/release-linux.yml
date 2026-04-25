@@ -1,0 +1,57 @@
+name: Release Linux Assets
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  linux-assets:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.9.2'
+          cache: true
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            pkg-config \
+            patchelf \
+            yt-dlp
+
+      - name: Build portable Linux bundle
+        run: ./packaging/linux/package-portable.sh
+
+      - name: Build Ubuntu-targeted .deb
+        run: ./packaging/linux/package-deb.sh ubuntu-latest
+
+      - name: Upload portable tarball to workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fiamy-linux-portable
+          path: dist/linux-portable/*.tar.gz
+
+      - name: Upload deb to workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fiamy-linux-deb
+          path: dist/linux-deb/*.deb
+
+      - name: Attach assets to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/linux-portable/*.tar.gz
+            dist/linux-deb/*.deb

@@ -82,6 +82,8 @@ yt-dlp.exe
 # Installer output
 installer_output/
 *.msi
+dist/
+.codex
 
 # IDE
 .vscode/
