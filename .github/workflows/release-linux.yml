@@ -28,13 +28,23 @@ jobs:
             ninja-build \
             pkg-config \
             patchelf \
+            wget \
             yt-dlp
+
+      - name: Build AppImage
+        run: ./packaging/linux/package-appimage.sh
 
       - name: Build portable Linux bundle
         run: ./packaging/linux/package-portable.sh
 
       - name: Build Ubuntu-targeted .deb
         run: ./packaging/linux/package-deb.sh ubuntu-latest
+
+      - name: Upload AppImage to workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fiamy-linux-appimage
+          path: dist/linux-appimage/*.AppImage
 
       - name: Upload portable tarball to workflow artifacts
         uses: actions/upload-artifact@v4
@@ -53,5 +63,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
+            dist/linux-appimage/*.AppImage
             dist/linux-portable/*.tar.gz
             dist/linux-deb/*.deb

@@ -10,6 +10,7 @@ TAG="$1"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 gh release upload "${TAG}" \
+  "${ROOT_DIR}"/dist/linux-appimage/*.AppImage \
   "${ROOT_DIR}"/dist/linux-portable/*.tar.gz \
   "${ROOT_DIR}"/dist/linux-deb/*.deb \
   --repo FiammaMuscari/Fiamy

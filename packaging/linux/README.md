@@ -11,6 +11,7 @@ Possible formats:
 ## Included scripts
 
 - `build-release.sh` → builds a release binary
+- `package-appimage.sh` → creates an AppImage for Linux desktop users
 - `package-portable.sh` → creates an initial portable folder
 - `package-deb.sh` → creates a Debian package
 - `package-deb-trixie.sh` → builds a Debian **Trixie** package in a Trixie container
@@ -26,6 +27,12 @@ and also creates:
 
 ```text
 dist/linux-portable/fiamy-<version>-linux-portable-x86_64.tar.gz
+```
+
+The AppImage helper creates:
+
+```text
+dist/linux-appimage/Fiamy-<version>-x86_64.AppImage
 ```
 
 If `yt-dlp` exists in `PATH` during the build, it is bundled into the package and used as the first runtime copy.
@@ -56,5 +63,6 @@ There is also a workflow at:
 
 When a GitHub Release is published, it builds and attaches:
 
+- AppImage
 - portable Linux tarball
 - Ubuntu-targeted `.deb`

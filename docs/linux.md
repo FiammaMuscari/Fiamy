@@ -28,6 +28,19 @@ Typical path:
 
 ## Installation
 
+Recommended Linux asset:
+
+```text
+dist/linux-appimage/Fiamy-1.0.2-x86_64.AppImage
+```
+
+Make it executable and run:
+
+```bash
+chmod +x Fiamy-1.0.2-x86_64.AppImage
+./Fiamy-1.0.2-x86_64.AppImage
+```
+
 Portable Linux asset:
 
 ```text
@@ -82,6 +95,16 @@ This creates:
 
 - `dist/fiamy-linux-portable/`
 - `dist/linux-portable/fiamy-<version>-linux-portable-x86_64.tar.gz`
+
+### AppImage
+
+```bash
+./packaging/linux/package-appimage.sh
+```
+
+This creates:
+
+- `dist/linux-appimage/Fiamy-<version>-x86_64.AppImage`
 
 ### Debian package
 
