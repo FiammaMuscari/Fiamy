@@ -24,7 +24,7 @@ A lightweight desktop MP3 player built with **Qt + C++**, focused on streaming u
 
 | Windows Installer | Linux Installer |
 |---|---|
-| **[⬇️ Download Fiamy v1.0.1 (Windows)](https://github.com/FiammaMuscari/Fiamy/releases/download/v1.0.1/Fiamy_Setup-1.0.1.exe)** | **[⬇️ Download Fiamy v1.0.2 (Linux)](https://github.com/FiammaMuscari/Fiamy/releases/download/v1.0.2-linux-beta/fiamy_1.0_amd64.deb)** |
+| **[⬇️ Download Fiamy v1.0.1 (Windows)](https://github.com/FiammaMuscari/Fiamy/releases/download/v1.0.1/Fiamy_Setup-1.0.1.exe)** | **[⬇️ Download Fiamy v1.0.2 (Linux)](https://github.com/FiammaMuscari/Fiamy/releases/download/v1.0.2-linux-beta/fiamy_1.0.2_ubuntu-qt6.9_amd64.deb)** |
 
 *Free & Open Source • No ads • No tracking*
 
@@ -72,7 +72,7 @@ Latest Linux packaging refresh:
 Install on Ubuntu / Debian based systems with:
 
 ```bash
-sudo apt install ./fiamy_1.0_amd64.deb
+sudo apt install ./fiamy_1.0.2_ubuntu-qt6.9_amd64.deb
 ```
 
 Or build locally from the Linux branch:
