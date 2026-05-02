@@ -5,14 +5,64 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(FIAMY_MIN_QT_VERSION "6.8" CACHE STRING "Minimum Qt version required to build Fiamy")
 
-find_package(Qt6 ${FIAMY_MIN_QT_VERSION} REQUIRED COMPONENTS
+set(FIAMY_QT_COMPONENTS
     Core
     Gui
+    QmlIntegration
     Qml
+    QmlModels
+    QmlWorkerScript
+    QmlMeta
     Quick
+    QuickTemplates2
     QuickControls2
     Multimedia
 )
+
+if(COSMOPOLITAN)
+    list(APPEND FIAMY_QT_COMPONENTS
+        Widgets
+        QmlPrivate
+        QmlModelsPrivate
+        QmlWorkerScriptPrivate
+        QmlMetaPrivate
+        QmlCore
+        QmlCorePrivate
+        GuiPrivate
+        MultimediaQuickPrivate
+        QuickPrivate
+        QuickLayouts
+        QuickControls2Impl
+        QuickTemplates2Private
+        QuickControls2BasicStyleImpl
+        QuickControls2Basic
+        QuickControls2FusionStyleImpl
+        QuickControls2Fusion
+        QuickControls2MaterialStyleImpl
+        QuickControls2Material
+        QuickControls2ImagineStyleImpl
+        QuickControls2Imagine
+        QuickControls2UniversalStyleImpl
+        QuickControls2Universal
+        QuickControls2FluentWinUI3StyleImpl
+        LabsPlatform
+    )
+endif()
+
+find_package(Qt6 ${FIAMY_MIN_QT_VERSION} REQUIRED COMPONENTS ${FIAMY_QT_COMPONENTS})
+
+if(COSMOPOLITAN)
+    find_package(Qt6QmlTools REQUIRED CONFIG
+        PATHS /opt/homebrew
+        NO_DEFAULT_PATH
+        NO_CMAKE_FIND_ROOT_PATH
+    )
+    find_package(Qt6ShaderTools REQUIRED CONFIG
+        PATHS /opt/homebrew/Cellar/qtshadertools/6.10.2 /opt/homebrew
+        NO_DEFAULT_PATH
+        NO_CMAKE_FIND_ROOT_PATH
+    )
+endif()
 qt_standard_project_setup()
 
 set(SRC
@@ -57,6 +107,32 @@ set_target_properties(Fiamy PROPERTIES
     OUTPUT_NAME "fiamy"
 )
 
+if(APPLE)
+    set(FIAMY_MACOS_ICON "" CACHE FILEPATH "Optional .icns icon to use for the macOS app bundle")
+
+    set_target_properties(Fiamy PROPERTIES
+        MACOSX_BUNDLE TRUE
+        OUTPUT_NAME "Fiamy"
+        MACOSX_BUNDLE_BUNDLE_NAME "Fiamy"
+        MACOSX_BUNDLE_DISPLAY_NAME "Fiamy"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.fiammamuscari.fiamy"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_COPYRIGHT "Copyright FiammaMuscari"
+    )
+
+    if(FIAMY_MACOS_ICON AND EXISTS "${FIAMY_MACOS_ICON}")
+        get_filename_component(FIAMY_MACOS_ICON_NAME "${FIAMY_MACOS_ICON}" NAME)
+        set_target_properties(Fiamy PROPERTIES
+            MACOSX_BUNDLE_ICON_FILE "${FIAMY_MACOS_ICON_NAME}"
+        )
+        set_source_files_properties("${FIAMY_MACOS_ICON}" PROPERTIES
+            MACOSX_PACKAGE_LOCATION "Resources"
+        )
+        target_sources(Fiamy PRIVATE "${FIAMY_MACOS_ICON}")
+    endif()
+endif()
+
 if(WIN32)
     set_target_properties(Fiamy PROPERTIES
         WIN32_EXECUTABLE TRUE
@@ -71,6 +147,15 @@ target_include_directories(Fiamy PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty
 )
 
+set(FIAMY_QML_MODULE_OPTIONS
+    NO_IMPORT_SCAN
+)
+if(COSMOPOLITAN)
+    list(APPEND FIAMY_QML_MODULE_OPTIONS
+        NO_CACHEGEN
+    )
+endif()
+
 # 🔥 En Debug: NO empaquetar QML en recursos, usar archivos directos
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     message(STATUS "🔥 Modo DEBUG: Hot reload habilitado")
@@ -79,6 +164,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     qt_add_qml_module(Fiamy
         URI Fiamy
         VERSION 1.0
+        ${FIAMY_QML_MODULE_OPTIONS}
         QML_FILES ${QML_FILES}
         NO_RESOURCE_TARGET_PATH
     )
@@ -106,7 +192,34 @@ else()
     qt_add_qml_module(Fiamy
         URI Fiamy
         VERSION 1.0
+        ${FIAMY_QML_MODULE_OPTIONS}
         QML_FILES ${QML_FILES}
+    )
+endif()
+
+# Qt's QML import scanner walks the target source root. Keep local build and
+# experiment outputs out of that scan, otherwise checked-out Qt sources under
+# dist/ can be mistaken for application imports during packaging.
+file(GLOB FIAMY_GENERATED_SCAN_DIRS
+    LIST_DIRECTORIES true
+    "${CMAKE_CURRENT_SOURCE_DIR}/build*"
+    "${CMAKE_CURRENT_SOURCE_DIR}/dist"
+)
+set(FIAMY_QML_IMPORT_SCANNER_EXTRA_ARGS)
+foreach(FIAMY_GENERATED_SCAN_DIR IN LISTS FIAMY_GENERATED_SCAN_DIRS)
+    if(IS_DIRECTORY "${FIAMY_GENERATED_SCAN_DIR}")
+        file(RELATIVE_PATH FIAMY_GENERATED_SCAN_DIR_REL
+            "${CMAKE_CURRENT_SOURCE_DIR}"
+            "${FIAMY_GENERATED_SCAN_DIR}"
+        )
+        list(APPEND FIAMY_QML_IMPORT_SCANNER_EXTRA_ARGS
+            -exclude "${FIAMY_GENERATED_SCAN_DIR_REL}"
+        )
+    endif()
+endforeach()
+if(FIAMY_QML_IMPORT_SCANNER_EXTRA_ARGS)
+    set_property(TARGET Fiamy PROPERTY
+        QT_QML_IMPORT_SCANNER_EXTRA_ARGS ${FIAMY_QML_IMPORT_SCANNER_EXTRA_ARGS}
     )
 endif()
 
@@ -123,12 +236,98 @@ target_include_directories(miniaudio INTERFACE
 target_link_libraries(Fiamy PRIVATE
     Qt6::Core
     Qt6::Gui
+    Qt6::QmlIntegration
     Qt6::Qml
+    Qt6::QmlModels
+    Qt6::QmlWorkerScript
+    Qt6::QmlMeta
     Qt6::Quick
+    Qt6::QuickTemplates2
     Qt6::QuickControls2
     Qt6::Multimedia
     miniaudio
 )
+
+if(COSMOPOLITAN)
+    if(NOT QT_COSMO_PREFIX)
+        message(FATAL_ERROR "Set QT_COSMO_PREFIX to the Qt Cosmopolitan install prefix.")
+    endif()
+
+    find_package(Qt6QVncIntegrationPlugin CONFIG REQUIRED
+        PATHS "${QT_COSMO_PREFIX}/lib/cmake/Qt6Gui"
+        NO_DEFAULT_PATH
+    )
+    find_package(Qt6QCosmoNativeIntegrationPlugin CONFIG REQUIRED
+        PATHS "${QT_COSMO_PREFIX}/lib/cmake/Qt6Gui"
+        NO_DEFAULT_PATH
+    )
+    find_package(Qt6QFFmpegMediaPlugin CONFIG REQUIRED
+        PATHS "${QT_COSMO_PREFIX}/lib/cmake/Qt6Multimedia"
+        NO_DEFAULT_PATH
+    )
+
+    file(GLOB qt_qml_plugin_configs CONFIGURE_DEPENDS
+        "${QT_COSMO_PREFIX}/lib/cmake/Qt6Qml/QmlPlugins/*Config.cmake"
+    )
+    foreach(qt_qml_plugin_config IN LISTS qt_qml_plugin_configs)
+        get_filename_component(qt_qml_plugin_package "${qt_qml_plugin_config}" NAME_WE)
+        string(REGEX REPLACE "Config$" "" qt_qml_plugin_package "${qt_qml_plugin_package}")
+        find_package(${qt_qml_plugin_package} CONFIG QUIET
+            PATHS "${QT_COSMO_PREFIX}/lib/cmake/Qt6Qml/QmlPlugins"
+            NO_DEFAULT_PATH
+        )
+    endforeach()
+
+    target_link_libraries(Fiamy PRIVATE
+        Qt6::Widgets
+        Qt6::QmlPrivate
+        Qt6::QmlModelsPrivate
+        Qt6::QmlWorkerScriptPrivate
+        Qt6::QmlMetaPrivate
+        Qt6::QmlCore
+        Qt6::QmlCorePrivate
+        Qt6::GuiPrivate
+        Qt6::MultimediaQuickPrivate
+        Qt6::QuickPrivate
+        Qt6::QuickLayouts
+        Qt6::QuickControls2Impl
+        Qt6::QuickTemplates2Private
+        Qt6::QuickControls2BasicStyleImpl
+        Qt6::QuickControls2Basic
+        Qt6::QuickControls2FusionStyleImpl
+        Qt6::QuickControls2Fusion
+        Qt6::QuickControls2MaterialStyleImpl
+        Qt6::QuickControls2Material
+        Qt6::QuickControls2ImagineStyleImpl
+        Qt6::QuickControls2Imagine
+        Qt6::QuickControls2UniversalStyleImpl
+        Qt6::QuickControls2Universal
+        Qt6::QuickControls2FluentWinUI3StyleImpl
+        Qt6::LabsPlatform
+        Qt6::qmlplugin
+        Qt6::qtqmlcoreplugin
+        Qt6::modelsplugin
+        Qt6::workerscriptplugin
+        Qt6::qtquick2plugin
+        Qt6::quickwindow
+        Qt6::qquicklayoutsplugin
+        Qt6::qtquicktemplates2plugin
+        Qt6::qtquickcontrols2plugin
+        Qt6::qtquickcontrols2implplugin
+        Qt6::qtquickcontrols2basicstyleplugin
+        Qt6::qtquickcontrols2basicstyleimplplugin
+        Qt6::quickmultimedia
+        Qt6::LabsPlatformplugin
+    )
+    target_link_options(Fiamy PRIVATE LINKER:--allow-multiple-definition)
+
+    qt_import_plugins(Fiamy
+        INCLUDE
+            Qt6::QCosmoNativeIntegrationPlugin
+            Qt6::QVncIntegrationPlugin
+            Qt6::QFFmpegMediaPlugin
+    )
+endif()
 
 if(WIN32)
     if(EXISTS "${CMAKE_SOURCE_DIR}/yt-dlp.exe")

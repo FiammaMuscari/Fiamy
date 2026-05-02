@@ -1,0 +1,118 @@
+diff --git a/src/corelib/CMakeLists.txt b/src/corelib/CMakeLists.txt
+index 6412b178c73..589717ed7e4 100644
+--- a/src/corelib/CMakeLists.txt
++++ b/src/corelib/CMakeLists.txt
+@@ -1145,13 +1145,13 @@ qt_internal_extend_target(Core CONDITION HAIKU AND NOT ANDROID
+ )
+ 
+ qt_internal_extend_target(Core
+-    CONDITION UNIX AND NOT LINUX AND NOT APPLE AND NOT HAIKU AND NOT ANDROID AND NOT VXWORKS
++    CONDITION (UNIX AND NOT LINUX AND NOT APPLE AND NOT HAIKU AND NOT ANDROID AND NOT VXWORKS) OR COSMOPOLITAN
+     SOURCES
+         io/qstandardpaths_unix.cpp
+         io/qstorageinfo_unix.cpp
+ )
+ 
+-qt_internal_extend_target(Core CONDITION LINUX AND NOT ANDROID AND NOT VXWORKS
++qt_internal_extend_target(Core CONDITION LINUX AND NOT ANDROID AND NOT VXWORKS AND NOT COSMOPOLITAN
+     SOURCES
+         io/qstandardpaths_unix.cpp
+         io/qstorageinfo_linux.cpp
+diff --git a/src/gui/kernel/qevent.h b/src/gui/kernel/qevent.h
+index 2374e527e3e..2aa7de1e245 100644
+--- a/src/gui/kernel/qevent.h
++++ b/src/gui/kernel/qevent.h
+@@ -633,7 +633,8 @@ public:
+        Cursor,
+        Language,
+        Ruby,
+-       Selection
++       Selection,
++       MimeData
+     };
+     class Attribute {
+     public:
+diff --git a/src/gui/text/qinputcontrol.cpp b/src/gui/text/qinputcontrol.cpp
+index 4edd46ff0e7..9420250cb7e 100644
+--- a/src/gui/text/qinputcontrol.cpp
++++ b/src/gui/text/qinputcontrol.cpp
+@@ -3,6 +3,9 @@
+ 
+ #include "qinputcontrol_p.h"
+ #include <QtGui/qevent.h>
++#include <QtCore/qmimedata.h>
++
++#include <algorithm>
+ 
+ QT_BEGIN_NAMESPACE
+ 
+@@ -103,6 +106,40 @@ bool QInputControl::isCommonTextEditShortcut(const QKeyEvent *ke)
+     return false;
+ }
+ 
++/*!
++    \internal
++
++    Creates a wrapper for returning QMimeData in response to
++    Qt::ImCurrentSelection, while being backwards compatible
++    with clients who only read the plain text string.
++*/
++QVariant QInputControl::selectionWrapper(QMimeData *mimeData)
++{
++    struct MimeDataSelection
++    {
++        QMimeData *mimeData = nullptr;
++        operator QMimeData*() const { return mimeData; }
++        operator QString() const { return mimeData->text(); }
++    };
++
++    static bool registeredConversions = []{
++        return QMetaType::registerConverter<MimeDataSelection, QMimeData*>()
++            && QMetaType::registerConverter<MimeDataSelection, QString>();
++    }();
++    Q_ASSERT(registeredConversions);
++    return QVariant::fromValue(MimeDataSelection{mimeData});
++}
++
++QMimeData *QInputControl::mimeDataForInputEvent(QInputMethodEvent *event)
++{
++    const auto &attributes = event->attributes();
++    auto mimeDataAttr = std::find_if(attributes.begin(), attributes.end(),
++        [](auto a) { return a.type == QInputMethodEvent::MimeData; });
++    return mimeDataAttr != event->attributes().end()
++        ? mimeDataAttr->value.value<QMimeData*>()
++        : nullptr;
++}
++
+ QT_END_NAMESPACE
+ 
+ #include "moc_qinputcontrol_p.cpp"
+diff --git a/src/gui/text/qinputcontrol_p.h b/src/gui/text/qinputcontrol_p.h
+index fec73e1987b..f2cad08f81b 100644
+--- a/src/gui/text/qinputcontrol_p.h
++++ b/src/gui/text/qinputcontrol_p.h
+@@ -16,12 +16,15 @@
+ //
+ 
+ #include <QtCore/qobject.h>
++#include <QtCore/qvariant.h>
+ #include <qtguiglobal.h>
+ #include <private/qglobal_p.h>
+ 
+ QT_BEGIN_NAMESPACE
+ 
+ class QKeyEvent;
++class QMimeData;
++class QInputMethodEvent;
+ class Q_GUI_EXPORT QInputControl : public QObject
+ {
+     Q_OBJECT
+@@ -35,6 +38,8 @@ public:
+ 
+     bool isAcceptableInput(const QKeyEvent *event) const;
+     static bool isCommonTextEditShortcut(const QKeyEvent *ke);
++    static QVariant selectionWrapper(QMimeData *mimeData);
++    static QMimeData *mimeDataForInputEvent(QInputMethodEvent *event);
+ 
+ protected:
+     explicit QInputControl(Type type, QObjectPrivate &dd, QObject *parent = nullptr);

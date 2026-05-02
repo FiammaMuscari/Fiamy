@@ -1,13 +1,45 @@
+#include "audiocaptureanalyzer.h"
+
+#ifndef __COSMOPOLITAN__
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
-#include "audiocaptureanalyzer.h"
+#endif
+
+#include <QDateTime>
 #include <QtMath>
 #include <QDebug>
+#include <QMetaObject>
+#include <QMutexLocker>
+#include <QThread>
+
+#ifdef __COSMOPOLITAN__
+extern "C" void qcosmoaudio_set_output_tap(
+    void (*callback)(const float *samples, int frames, int channels, int sampleRate, void *userData),
+    void *userData);
+
+static QMutex s_cosmoAudioTapMutex;
+static AudioCaptureAnalyzer *s_cosmoAudioAnalyzer = nullptr;
+
+static void cosmoAudioTap(const float *samples, int frames, int channels, int sampleRate,
+                          void *userData)
+{
+    Q_UNUSED(userData);
+
+    QMutexLocker locker(&s_cosmoAudioTapMutex);
+    auto *analyzer = s_cosmoAudioAnalyzer;
+    if (!analyzer)
+        return;
+
+    analyzer->ingestFloatSamples(samples, frames, channels, sampleRate);
+}
+#endif
 
 AudioCaptureAnalyzer::AudioCaptureAnalyzer(QObject *parent)
     : QObject(parent)
     , m_device(nullptr)
     , m_isRunning(false)
+    , m_lastAnalysisMs(0)
+    , m_analysisQueued(false)
 {
     // Inicializar spectrum
     for (int i = 0; i < SPECTRUM_SIZE; ++i) {
@@ -28,11 +60,32 @@ QVariantList AudioCaptureAnalyzer::spectrum() const
 
 bool AudioCaptureAnalyzer::isRunning() const
 {
-    return m_isRunning;
+    return m_isRunning.load(std::memory_order_acquire);
 }
 
 void AudioCaptureAnalyzer::start()
 {
+#ifdef __COSMOPOLITAN__
+    if (m_isRunning.load(std::memory_order_acquire)) {
+        qDebug() << "AudioCaptureAnalyzer: Ya está ejecutándose";
+        return;
+    }
+
+    if (qEnvironmentVariableIsSet("FIAMY_DISABLE_AUDIO_TAP")) {
+        m_isRunning.store(true, std::memory_order_release);
+        qDebug() << "AudioCaptureAnalyzer: QtMultimedia/cosmoaudio tap deshabilitado por entorno";
+        return;
+    }
+
+    {
+        QMutexLocker locker(&s_cosmoAudioTapMutex);
+        s_cosmoAudioAnalyzer = this;
+        qcosmoaudio_set_output_tap(cosmoAudioTap, nullptr);
+    }
+    m_isRunning.store(true, std::memory_order_release);
+    qDebug() << "AudioCaptureAnalyzer: Analizador conectado a QtMultimedia/cosmoaudio";
+    return;
+#else
     if (m_device) {
         qDebug() << "AudioCaptureAnalyzer: Ya está ejecutándose";
         return;
@@ -62,41 +115,113 @@ void AudioCaptureAnalyzer::start()
         return;
     }
 
-    m_isRunning = true;
+    m_isRunning.store(true, std::memory_order_release);
     qDebug() << "AudioCaptureAnalyzer: Captura de audio iniciada (loopback)";
+#endif
 }
 
 void AudioCaptureAnalyzer::stop()
 {
+#ifdef __COSMOPOLITAN__
+    if (m_isRunning.load(std::memory_order_acquire) && !m_device) {
+        QMutexLocker locker(&s_cosmoAudioTapMutex);
+        if (s_cosmoAudioAnalyzer == this)
+            s_cosmoAudioAnalyzer = nullptr;
+        qcosmoaudio_set_output_tap(nullptr, nullptr);
+        m_isRunning.store(false, std::memory_order_release);
+        m_analysisQueued.store(false, std::memory_order_release);
+        qDebug() << "AudioCaptureAnalyzer: Analizador QtMultimedia/cosmoaudio detenido";
+        return;
+    }
+#endif
+
+#ifndef __COSMOPOLITAN__
     if (m_device) {
         ma_device_uninit(m_device);
         delete m_device;
         m_device = nullptr;
-        m_isRunning = false;
+        m_isRunning.store(false, std::memory_order_release);
+        m_analysisQueued.store(false, std::memory_order_release);
         qDebug() << "AudioCaptureAnalyzer: Captura de audio detenida";
     }
+#endif
 }
 
 void AudioCaptureAnalyzer::dataCallback(ma_device* pDevice, void* pOutput,
                                         const void* pInput, unsigned int frameCount)
 {
+#ifdef __COSMOPOLITAN__
+    Q_UNUSED(pDevice);
+    Q_UNUSED(pOutput);
+    Q_UNUSED(pInput);
+    Q_UNUSED(frameCount);
+#else
     Q_UNUSED(pOutput);
 
     auto* analyzer = static_cast<AudioCaptureAnalyzer*>(pDevice->pUserData);
     if (!analyzer || !pInput || frameCount == 0) return;
 
     const float* samples = static_cast<const float*>(pInput);
-    analyzer->calculateFFT(samples, frameCount * 2); // *2 por estéreo
+    analyzer->calculateFFT(samples, int(frameCount), 2);
+#endif
 }
 
-void AudioCaptureAnalyzer::calculateFFT(const float* samples, int count)
+void AudioCaptureAnalyzer::ingestFloatSamples(const float *samples, int frames, int channels,
+                                              int sampleRate)
+{
+    Q_UNUSED(sampleRate);
+
+    if (!samples || frames <= 0 || channels <= 0 || !m_isRunning.load(std::memory_order_acquire))
+        return;
+
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const qint64 last = m_lastAnalysisMs.load(std::memory_order_relaxed);
+    if (now - last < 33)
+        return;
+
+    m_lastAnalysisMs.store(now, std::memory_order_relaxed);
+    if (m_analysisQueued.exchange(true, std::memory_order_acq_rel))
+        return;
+
+    const int safeChannels = qMax(1, channels);
+    const int frameCount = qMin(frames, FFT_SIZE);
+    QVector<float> monoSamples;
+    monoSamples.reserve(frameCount);
+
+    for (int frame = 0; frame < frameCount; ++frame) {
+        float mixed = 0.0f;
+        const int base = frame * safeChannels;
+        for (int channel = 0; channel < safeChannels; ++channel)
+            mixed += samples[base + channel];
+        monoSamples.append(mixed / safeChannels);
+    }
+
+    if (monoSamples.size() < 64) {
+        m_analysisQueued.store(false, std::memory_order_release);
+        return;
+    }
+
+    QMetaObject::invokeMethod(this, [this, monoSamples = std::move(monoSamples)]() {
+        m_analysisQueued.store(false, std::memory_order_release);
+        if (!m_isRunning.load(std::memory_order_acquire))
+            return;
+        calculateFFT(monoSamples.constData(), monoSamples.size(), 1);
+    }, Qt::QueuedConnection);
+}
+
+void AudioCaptureAnalyzer::calculateFFT(const float *samples, int frames, int channels)
 {
     // Convertir estéreo a mono y limitar a FFT_SIZE
     QList<float> monoSamples;
     monoSamples.reserve(FFT_SIZE);
 
-    for (int i = 0; i < count - 1 && monoSamples.size() < FFT_SIZE; i += 2) {
-        monoSamples.append((samples[i] + samples[i + 1]) * 0.5f);
+    const int safeChannels = qMax(1, channels);
+    for (int frame = 0; frame < frames && monoSamples.size() < FFT_SIZE; ++frame) {
+        float mixed = 0.0f;
+        const int base = frame * safeChannels;
+        for (int channel = 0; channel < safeChannels; ++channel)
+            mixed += samples[base + channel];
+        monoSamples.append(mixed / safeChannels);
     }
 
     if (monoSamples.size() < 64) return; // Muy pocas muestras
@@ -158,7 +283,19 @@ void AudioCaptureAnalyzer::calculateFFT(const float* samples, int count)
     m_spectrum = newSpectrum;
     locker.unlock();
 
-    emit spectrumChanged();
+    notifySpectrumChanged();
+}
+
+void AudioCaptureAnalyzer::notifySpectrumChanged()
+{
+    if (QThread::currentThread() == thread()) {
+        emit spectrumChanged();
+        return;
+    }
+
+    QMetaObject::invokeMethod(this, [this]() {
+        emit spectrumChanged();
+    }, Qt::QueuedConnection);
 }
 
 float AudioCaptureAnalyzer::hammingWindow(int n, int N)

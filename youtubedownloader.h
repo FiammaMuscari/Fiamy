@@ -12,6 +12,8 @@ struct CacheEntry
 {
     QString videoId;
     QString filePath;
+    QString title;
+    QString author;
     qint64 fileSize;
     QDateTime lastAccessed;
 };
@@ -41,10 +43,11 @@ public:
     Q_INVOKABLE void removeFromCache(const QString &videoId);
 
 signals:
-    void audioReady(const QString &filePath, const QString &title, const QString &author);
+    void audioReady(const QString &fileUrl, const QString &title, const QString &author);
     void errorOccurred(const QString &error);
     void progressUpdate(const QString &message);
     void downloadCountChanged(int current, int total);
+    void downloadProgressChanged(int current, int total, double percent, const QString &title);
     void ytdlpDownloading(const QString &message);
 
 private slots:
@@ -58,7 +61,8 @@ private slots:
 private:
     void loadCacheIndex();
     void saveCacheIndex();
-    void updateCacheEntry(const QString &videoId, const QString &filePath, qint64 size);
+    void updateCacheEntry(const QString &videoId, const QString &filePath, qint64 size,
+                          const QString &title = {}, const QString &author = {});
     void calculateCurrentCacheSize();
     void cleanOldestEntries(qint64 bytesNeeded);
     void downloadYtDlp();
@@ -68,6 +72,9 @@ private:
     QString extractPlaylistId(const QString &url);
     QString cleanUrlForPlaylist(const QString &url);
     QString ensureAudioCacheDir();
+    QString findCachedAudioFile(const QString &videoId);
+    QString downloadOutputTemplate(const QString &videoId);
+    bool shouldDownloadNativeAudio() const;
     bool isPlaylistUrl(const QString &url);
     void startNextDownload();
 

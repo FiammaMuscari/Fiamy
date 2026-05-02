@@ -63,24 +63,24 @@ Rectangle {
         // 🎵 VISUALIZADOR
         Components.AudioVisualizer {
             Layout.fillWidth: true
-            Layout.preferredHeight: 160
-            Layout.minimumHeight: 140
-            Layout.maximumHeight: 160
+            Layout.preferredHeight: 130
+            Layout.minimumHeight: 130
+            Layout.maximumHeight: 130
             isPlaying: root.playerManager ? root.playerManager.isPlaying : false
             playerManager: root.playerManager
         }
 
-        Item { Layout.preferredHeight: 12 }  // ✅ Espaciador
+        Item { Layout.preferredHeight: 8 }  // ✅ Espaciador
 
         // ℹ️ INFO CANCIÓN
         Components.SongInfo {
             Layout.fillWidth: true
-            Layout.preferredHeight: 50
-            Layout.maximumHeight: 50
+            Layout.preferredHeight: 158
+            Layout.maximumHeight: 158
             playerManager: root.playerManager
         }
 
-        Item { Layout.preferredHeight: 12 }  // ✅ Espaciador
+        Item { Layout.preferredHeight: 6 }  // ✅ Espaciador
 
         // ⏱ PROGRESO
         Components.ProgressBar {
@@ -90,7 +90,7 @@ Rectangle {
             playerManager: root.playerManager
         }
 
-        Item { Layout.preferredHeight: 18 }  // ✅ MÁS espacio antes de botones
+        Item { Layout.preferredHeight: 8 }  // ✅ MÁS espacio antes de botones
 
         // ⏯ CONTROLES
         Components.PlayerControls {
@@ -100,7 +100,7 @@ Rectangle {
             playerManager: root.playerManager
         }
 
-        Item { Layout.preferredHeight: 6 }  // ✅ MENOS espacio después de botones
+        Item { Layout.preferredHeight: 4 }  // ✅ MENOS espacio después de botones
 
         // 🔽 PEGAR YOUTUBE ACÁ
         Components.YoutubeQueueInput {
@@ -108,7 +108,7 @@ Rectangle {
             playerManager: root.playerManager
         }
 
-        Item { Layout.preferredHeight: 10 }  // ✅ Espaciador
+        Item { Layout.preferredHeight: 4 }  // ✅ Espaciador
 
         // 🔊 VOLUMEN
         Components.VolumeControl {
@@ -118,7 +118,7 @@ Rectangle {
             playerManager: root.playerManager
         }
 
-        Item { Layout.preferredHeight: 10 }  // ✅ Espaciador
+        Item { Layout.preferredHeight: 4 }  // ✅ Espaciador
 
         // ➕➖ ACCIONES
         Components.ActionButtons {

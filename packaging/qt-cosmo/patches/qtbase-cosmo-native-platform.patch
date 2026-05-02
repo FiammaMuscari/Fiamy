@@ -1,0 +1,4670 @@
+diff --git a/src/corelib/CMakeLists.txt b/src/corelib/CMakeLists.txt
+index 6412b178c73..589717ed7e4 100644
+--- a/src/corelib/CMakeLists.txt
++++ b/src/corelib/CMakeLists.txt
+@@ -1145,13 +1145,13 @@ qt_internal_extend_target(Core CONDITION HAIKU AND NOT ANDROID
+ )
+ 
+ qt_internal_extend_target(Core
+-    CONDITION UNIX AND NOT LINUX AND NOT APPLE AND NOT HAIKU AND NOT ANDROID AND NOT VXWORKS
++    CONDITION (UNIX AND NOT LINUX AND NOT APPLE AND NOT HAIKU AND NOT ANDROID AND NOT VXWORKS) OR COSMOPOLITAN
+     SOURCES
+         io/qstandardpaths_unix.cpp
+         io/qstorageinfo_unix.cpp
+ )
+ 
+-qt_internal_extend_target(Core CONDITION LINUX AND NOT ANDROID AND NOT VXWORKS
++qt_internal_extend_target(Core CONDITION LINUX AND NOT ANDROID AND NOT VXWORKS AND NOT COSMOPOLITAN
+     SOURCES
+         io/qstandardpaths_unix.cpp
+         io/qstorageinfo_linux.cpp
+diff --git a/src/corelib/global/qexpected_p.h b/src/corelib/global/qexpected_p.h
+new file mode 100644
+index 00000000000..54bcae51102
+--- /dev/null
++++ b/src/corelib/global/qexpected_p.h
+@@ -0,0 +1,2508 @@
++// Copyright (C) 2017 Sy Brand (tartanllama@gmail.com, @TartanLlama)
++// SPDX-License-Identifier: CC0-1.0
++
++///
++// expected - An implementation of std::expected with extensions
++// Written in 2017 by Sy Brand (tartanllama@gmail.com, @TartanLlama)
++//
++// Documentation available at http://tl.tartanllama.xyz/
++//
++// To the extent possible under law, the author(s) have dedicated all
++// copyright and related and neighboring rights to this software to the
++// public domain worldwide. This software is distributed without any warranty.
++//
++// You should have received a copy of the CC0 Public Domain Dedication
++// along with this software. If not, see
++// <http://creativecommons.org/publicdomain/zero/1.0/>.
++///
++
++#ifndef Q23_TL_EXPECTED_HPP
++#define Q23_TL_EXPECTED_HPP
++
++//
++//  W A R N I N G
++//  -------------
++//
++// This file is not part of the Qt API.  It exists purely as an
++// implementation detail.  This header file may change from version to
++// version without notice, or even be removed.
++//
++// We mean it.
++//
++
++#define Q23_TL_EXPECTED_VERSION_MAJOR 1
++#define Q23_TL_EXPECTED_VERSION_MINOR 1
++#define Q23_TL_EXPECTED_VERSION_PATCH 0
++
++#include <QtCore/private/qglobal_p.h>
++#include <QtCore/qassert.h>
++#include <QtCore/qtconfiginclude.h>
++#include <QtCore/qtconfigmacros.h>
++
++#include <exception>
++#include <functional>
++#include <type_traits>
++#include <utility>
++
++#define Q23_TL_ASSERT Q_ASSERT
++
++#if defined(__EXCEPTIONS) || defined(_CPPUNWIND)
++#define Q23_TL_EXPECTED_EXCEPTIONS_ENABLED
++#endif
++
++#if defined(Q23_TL_EXPECTED_EXCEPTIONS_ENABLED) && defined(QT_NO_EXCEPTIONS)
++#  undef Q23_TL_EXPECTED_EXCEPTIONS_ENABLED
++#endif
++
++#if (defined(_MSC_VER) && _MSC_VER == 1900)
++#define Q23_TL_EXPECTED_MSVC2015
++#define Q23_TL_EXPECTED_MSVC2015_CONSTEXPR
++#else
++#define Q23_TL_EXPECTED_MSVC2015_CONSTEXPR constexpr
++#endif
++
++#if (defined(__GNUC__) && __GNUC__ == 4 && __GNUC_MINOR__ <= 9 &&              \
++     !defined(__clang__))
++#define Q23_TL_EXPECTED_GCC49
++#endif
++
++#if (defined(__GNUC__) && __GNUC__ == 5 && __GNUC_MINOR__ <= 4 &&              \
++     !defined(__clang__))
++#define Q23_TL_EXPECTED_GCC54
++#endif
++
++#if (defined(__GNUC__) && __GNUC__ == 5 && __GNUC_MINOR__ <= 5 &&              \
++     !defined(__clang__))
++#define Q23_TL_EXPECTED_GCC55
++#endif
++
++#if !defined(Q23_TL_ASSERT)
++//can't have assert in constexpr in C++11 and GCC 4.9 has a compiler bug
++#if (Q23_TL_CPLUSPLUS > 201103L) && !defined(Q23_TL_EXPECTED_GCC49)
++#include <cassert>
++#define Q23_TL_ASSERT(x) assert(x)
++#else 
++#define Q23_TL_ASSERT(x)
++#endif
++#endif
++
++#if (defined(__GNUC__) && __GNUC__ == 4 && __GNUC_MINOR__ <= 9 &&              \
++     !defined(__clang__))
++// GCC < 5 doesn't support overloading on const&& for member functions
++
++#define Q23_TL_EXPECTED_NO_CONSTRR
++// GCC < 5 doesn't support some standard C++11 type traits
++#define Q23_TL_EXPECTED_IS_TRIVIALLY_COPY_CONSTRUCTIBLE(T)                         \
++  std::has_trivial_copy_constructor<T>
++#define Q23_TL_EXPECTED_IS_TRIVIALLY_COPY_ASSIGNABLE(T)                            \
++  std::has_trivial_copy_assign<T>
++
++// This one will be different for GCC 5.7 if it's ever supported
++#define Q23_TL_EXPECTED_IS_TRIVIALLY_DESTRUCTIBLE(T)                               \
++  std::is_trivially_destructible<T>
++
++// GCC 5 < v < 8 has a bug in is_trivially_copy_constructible which breaks
++// std::vector for non-copyable types
++#elif (defined(__GNUC__) && __GNUC__ < 8 && !defined(__clang__))
++#ifndef Q23_TL_GCC_LESS_8_TRIVIALLY_COPY_CONSTRUCTIBLE_MUTEX
++#define Q23_TL_GCC_LESS_8_TRIVIALLY_COPY_CONSTRUCTIBLE_MUTEX
++QT_BEGIN_NAMESPACE
++namespace q23 {
++namespace detail {
++template <class T>
++struct is_trivially_copy_constructible
++    : std::is_trivially_copy_constructible<T> {};
++#ifdef _GLIBCXX_VECTOR
++template <class T, class A>
++struct is_trivially_copy_constructible<std::vector<T, A>> : std::false_type {};
++#endif
++} // namespace detail
++} // namespace q23
++QT_END_NAMESPACE
++#endif
++
++#define Q23_TL_EXPECTED_IS_TRIVIALLY_COPY_CONSTRUCTIBLE(T)                         \
++  q23::detail::is_trivially_copy_constructible<T>
++#define Q23_TL_EXPECTED_IS_TRIVIALLY_COPY_ASSIGNABLE(T)                            \
++  std::is_trivially_copy_assignable<T>
++#define Q23_TL_EXPECTED_IS_TRIVIALLY_DESTRUCTIBLE(T)                               \
++  std::is_trivially_destructible<T>
++#else
++#define Q23_TL_EXPECTED_IS_TRIVIALLY_COPY_CONSTRUCTIBLE(T)                         \
++  std::is_trivially_copy_constructible<T>
++#define Q23_TL_EXPECTED_IS_TRIVIALLY_COPY_ASSIGNABLE(T)                            \
++  std::is_trivially_copy_assignable<T>
++#define Q23_TL_EXPECTED_IS_TRIVIALLY_DESTRUCTIBLE(T)                               \
++  std::is_trivially_destructible<T>
++#endif
++
++#ifdef _MSVC_LANG
++#define Q23_TL_CPLUSPLUS _MSVC_LANG
++#else
++#define Q23_TL_CPLUSPLUS __cplusplus
++#endif
++
++#if Q23_TL_CPLUSPLUS > 201103L
++#define Q23_TL_EXPECTED_CXX14
++#endif
++
++#ifdef Q23_TL_EXPECTED_GCC49
++#define Q23_TL_EXPECTED_GCC49_CONSTEXPR
++#else
++#define Q23_TL_EXPECTED_GCC49_CONSTEXPR constexpr
++#endif
++
++#if (Q23_TL_CPLUSPLUS == 201103L || defined(Q23_TL_EXPECTED_MSVC2015) ||                \
++     defined(Q23_TL_EXPECTED_GCC49))
++#define Q23_TL_EXPECTED_11_CONSTEXPR
++#else
++#define Q23_TL_EXPECTED_11_CONSTEXPR constexpr
++#endif
++
++QT_BEGIN_NAMESPACE
++namespace q23 {
++template <class T, class E> class expected;
++
++#ifndef Q23_TL_MONOSTATE_INPLACE_MUTEX
++#define Q23_TL_MONOSTATE_INPLACE_MUTEX
++class monostate {};
++
++struct in_place_t {
++  explicit in_place_t() = default;
++};
++static constexpr in_place_t in_place{};
++#endif
++
++template <class E> class unexpected {
++public:
++  static_assert(!std::is_same<E, void>::value, "E must not be void");
++
++  unexpected() = delete;
++  constexpr explicit unexpected(const E &e) : m_val(e) {}
++
++  constexpr explicit unexpected(E &&e) : m_val(std::move(e)) {}
++
++  template <class... Args, typename std::enable_if<std::is_constructible<
++                               E, Args &&...>::value>::type * = nullptr>
++  constexpr explicit unexpected(in_place_t, Args &&...args)
++      : m_val(std::forward<Args>(args)...) {}
++
++  template <
++      class U, class... Args,
++      typename std::enable_if<std::is_constructible<
++          E, std::initializer_list<U> &, Args &&...>::value>::type * = nullptr>
++  constexpr explicit unexpected(in_place_t, std::initializer_list<U> l,
++                                Args &&...args)
++      : m_val(l, std::forward<Args>(args)...) {}
++
++  constexpr const E &error() const & { return m_val; }
++  Q23_TL_EXPECTED_11_CONSTEXPR E &error() & { return m_val; }
++  Q23_TL_EXPECTED_11_CONSTEXPR E &&error() && { return std::move(m_val); }
++  constexpr const E &&error() const && { return std::move(m_val); }
++
++private:
++  E m_val;
++};
++
++#ifdef __cpp_deduction_guides
++template <class E> unexpected(E) -> unexpected<E>;
++#endif
++
++template <class E>
++constexpr bool operator==(const unexpected<E> &lhs, const unexpected<E> &rhs) {
++  return lhs.error() == rhs.error();
++}
++template <class E>
++constexpr bool operator!=(const unexpected<E> &lhs, const unexpected<E> &rhs) {
++  return lhs.error() != rhs.error();
++}
++template <class E>
++constexpr bool operator<(const unexpected<E> &lhs, const unexpected<E> &rhs) {
++  return lhs.error() < rhs.error();
++}
++template <class E>
++constexpr bool operator<=(const unexpected<E> &lhs, const unexpected<E> &rhs) {
++  return lhs.error() <= rhs.error();
++}
++template <class E>
++constexpr bool operator>(const unexpected<E> &lhs, const unexpected<E> &rhs) {
++  return lhs.error() > rhs.error();
++}
++template <class E>
++constexpr bool operator>=(const unexpected<E> &lhs, const unexpected<E> &rhs) {
++  return lhs.error() >= rhs.error();
++}
++
++template <class E>
++unexpected<typename std::decay<E>::type> make_unexpected(E &&e) {
++  return unexpected<typename std::decay<E>::type>(std::forward<E>(e));
++}
++
++struct unexpect_t {
++  unexpect_t() = default;
++};
++static constexpr unexpect_t unexpect{};
++
++namespace detail {
++template <typename E>
++[[noreturn]] Q23_TL_EXPECTED_11_CONSTEXPR void throw_exception(E &&e) {
++#ifdef Q23_TL_EXPECTED_EXCEPTIONS_ENABLED
++  throw std::forward<E>(e);
++#else
++  (void)e;
++#ifdef _MSC_VER
++  __assume(0);
++#else
++  Q_UNREACHABLE();
++#endif
++#endif
++}
++
++#ifndef Q23_TL_TRAITS_MUTEX
++#define Q23_TL_TRAITS_MUTEX
++// C++14-style aliases for brevity
++template <class T> using remove_const_t = typename std::remove_const<T>::type;
++template <class T>
++using remove_reference_t = typename std::remove_reference<T>::type;
++template <class T> using decay_t = typename std::decay<T>::type;
++template <bool E, class T = void>
++using enable_if_t = typename std::enable_if<E, T>::type;
++template <bool B, class T, class F>
++using conditional_t = typename std::conditional<B, T, F>::type;
++
++// std::conjunction from C++17
++template <class...> struct conjunction : std::true_type {};
++template <class B> struct conjunction<B> : B {};
++template <class B, class... Bs>
++struct conjunction<B, Bs...>
++    : std::conditional<bool(B::value), conjunction<Bs...>, B>::type {};
++
++#if defined(_LIBCPP_VERSION) && __cplusplus == 201103L
++#define Q23_TL_TRAITS_LIBCXX_MEM_FN_WORKAROUND
++#endif
++
++// In C++11 mode, there's an issue in libc++'s std::mem_fn
++// which results in a hard-error when using it in a noexcept expression
++// in some cases. This is a check to workaround the common failing case.
++#ifdef Q23_TL_TRAITS_LIBCXX_MEM_FN_WORKAROUND
++template <class T>
++struct is_pointer_to_non_const_member_func : std::false_type {};
++template <class T, class Ret, class... Args>
++struct is_pointer_to_non_const_member_func<Ret (T::*)(Args...)>
++    : std::true_type {};
++template <class T, class Ret, class... Args>
++struct is_pointer_to_non_const_member_func<Ret (T::*)(Args...) &>
++    : std::true_type {};
++template <class T, class Ret, class... Args>
++struct is_pointer_to_non_const_member_func<Ret (T::*)(Args...) &&>
++    : std::true_type {};
++template <class T, class Ret, class... Args>
++struct is_pointer_to_non_const_member_func<Ret (T::*)(Args...) volatile>
++    : std::true_type {};
++template <class T, class Ret, class... Args>
++struct is_pointer_to_non_const_member_func<Ret (T::*)(Args...) volatile &>
++    : std::true_type {};
++template <class T, class Ret, class... Args>
++struct is_pointer_to_non_const_member_func<Ret (T::*)(Args...) volatile &&>
++    : std::true_type {};
++
++template <class T> struct is_const_or_const_ref : std::false_type {};
++template <class T> struct is_const_or_const_ref<T const &> : std::true_type {};
++template <class T> struct is_const_or_const_ref<T const> : std::true_type {};
++#endif
++
++// std::invoke from C++17
++// https://stackoverflow.com/questions/38288042/c11-14-invoke-workaround
++template <
++    typename Fn, typename... Args,
++#ifdef Q23_TL_TRAITS_LIBCXX_MEM_FN_WORKAROUND
++    typename = enable_if_t<!(is_pointer_to_non_const_member_func<Fn>::value &&
++                             is_const_or_const_ref<Args...>::value)>,
++#endif
++    typename = enable_if_t<std::is_member_pointer<decay_t<Fn>>::value>, int = 0>
++constexpr auto invoke(Fn &&f, Args &&...args) noexcept(
++    noexcept(std::mem_fn(f)(std::forward<Args>(args)...)))
++    -> decltype(std::mem_fn(f)(std::forward<Args>(args)...)) {
++  return std::mem_fn(f)(std::forward<Args>(args)...);
++}
++
++template <typename Fn, typename... Args,
++          typename = enable_if_t<!std::is_member_pointer<decay_t<Fn>>::value>>
++constexpr auto invoke(Fn &&f, Args &&...args) noexcept(
++    noexcept(std::forward<Fn>(f)(std::forward<Args>(args)...)))
++    -> decltype(std::forward<Fn>(f)(std::forward<Args>(args)...)) {
++  return std::forward<Fn>(f)(std::forward<Args>(args)...);
++}
++
++// std::invoke_result from C++17
++template <class F, class, class... Us> struct invoke_result_impl;
++
++template <class F, class... Us>
++struct invoke_result_impl<
++    F,
++    decltype(detail::invoke(std::declval<F>(), std::declval<Us>()...), void()),
++    Us...> {
++  using type =
++      decltype(detail::invoke(std::declval<F>(), std::declval<Us>()...));
++};
++
++template <class F, class... Us>
++using invoke_result = invoke_result_impl<F, void, Us...>;
++
++template <class F, class... Us>
++using invoke_result_t = typename invoke_result<F, Us...>::type;
++
++#if defined(_MSC_VER) && _MSC_VER <= 1900
++// TODO make a version which works with MSVC 2015
++template <class T, class U = T> struct is_swappable : std::true_type {};
++
++template <class T, class U = T> struct is_nothrow_swappable : std::true_type {};
++#else
++// https://stackoverflow.com/questions/26744589/what-is-a-proper-way-to-implement-is-swappable-to-test-for-the-swappable-concept
++namespace swap_adl_tests {
++// if swap ADL finds this then it would call std::swap otherwise (same
++// signature)
++struct tag {};
++
++template <class T> tag swap(T &, T &);
++template <class T, std::size_t N> tag swap(T (&a)[N], T (&b)[N]);
++
++// helper functions to test if an unqualified swap is possible, and if it
++// becomes std::swap
++template <class, class> std::false_type can_swap(...) noexcept(false);
++template <class T, class U,
++          class = decltype(swap(std::declval<T &>(), std::declval<U &>()))>
++std::true_type can_swap(int) noexcept(noexcept(swap(std::declval<T &>(),
++                                                    std::declval<U &>())));
++
++template <class, class> std::false_type uses_std(...);
++template <class T, class U>
++std::is_same<decltype(swap(std::declval<T &>(), std::declval<U &>())), tag>
++uses_std(int);
++
++template <class T>
++struct is_std_swap_noexcept
++    : std::integral_constant<bool,
++                             std::is_nothrow_move_constructible<T>::value &&
++                                 std::is_nothrow_move_assignable<T>::value> {};
++
++template <class T, std::size_t N>
++struct is_std_swap_noexcept<T[N]> : is_std_swap_noexcept<T> {};
++
++template <class T, class U>
++struct is_adl_swap_noexcept
++    : std::integral_constant<bool, noexcept(can_swap<T, U>(0))> {};
++} // namespace swap_adl_tests
++
++template <class T, class U = T>
++struct is_swappable
++    : std::integral_constant<
++          bool,
++          decltype(detail::swap_adl_tests::can_swap<T, U>(0))::value &&
++              (!decltype(detail::swap_adl_tests::uses_std<T, U>(0))::value ||
++               (std::is_move_assignable<T>::value &&
++                std::is_move_constructible<T>::value))> {};
++
++template <class T, std::size_t N>
++struct is_swappable<T[N], T[N]>
++    : std::integral_constant<
++          bool,
++          decltype(detail::swap_adl_tests::can_swap<T[N], T[N]>(0))::value &&
++              (!decltype(detail::swap_adl_tests::uses_std<T[N], T[N]>(
++                   0))::value ||
++               is_swappable<T, T>::value)> {};
++
++template <class T, class U = T>
++struct is_nothrow_swappable
++    : std::integral_constant<
++          bool,
++          is_swappable<T, U>::value &&
++              ((decltype(detail::swap_adl_tests::uses_std<T, U>(0))::value &&
++                detail::swap_adl_tests::is_std_swap_noexcept<T>::value) ||
++               (!decltype(detail::swap_adl_tests::uses_std<T, U>(0))::value &&
++                detail::swap_adl_tests::is_adl_swap_noexcept<T, U>::value))> {};
++#endif
++#endif
++
++// Trait for checking if a type is a q23::expected
++template <class T> struct is_expected_impl : std::false_type {};
++template <class T, class E>
++struct is_expected_impl<expected<T, E>> : std::true_type {};
++template <class T> using is_expected = is_expected_impl<decay_t<T>>;
++
++template <class T, class E, class U>
++using expected_enable_forward_value = detail::enable_if_t<
++    std::is_constructible<T, U &&>::value &&
++    !std::is_same<detail::decay_t<U>, in_place_t>::value &&
++    !std::is_same<expected<T, E>, detail::decay_t<U>>::value &&
++    !std::is_same<unexpected<E>, detail::decay_t<U>>::value>;
++
++template <class T, class E, class U, class G, class UR, class GR>
++using expected_enable_from_other = detail::enable_if_t<
++    std::is_constructible<T, UR>::value &&
++    std::is_constructible<E, GR>::value &&
++    !std::is_constructible<T, expected<U, G> &>::value &&
++    !std::is_constructible<T, expected<U, G> &&>::value &&
++    !std::is_constructible<T, const expected<U, G> &>::value &&
++    !std::is_constructible<T, const expected<U, G> &&>::value &&
++    !std::is_convertible<expected<U, G> &, T>::value &&
++    !std::is_convertible<expected<U, G> &&, T>::value &&
++    !std::is_convertible<const expected<U, G> &, T>::value &&
++    !std::is_convertible<const expected<U, G> &&, T>::value>;
++
++template <class T, class U>
++using is_void_or = conditional_t<std::is_void<T>::value, std::true_type, U>;
++
++template <class T>
++using is_copy_constructible_or_void =
++    is_void_or<T, std::is_copy_constructible<T>>;
++
++template <class T>
++using is_move_constructible_or_void =
++    is_void_or<T, std::is_move_constructible<T>>;
++
++template <class T>
++using is_copy_assignable_or_void = is_void_or<T, std::is_copy_assignable<T>>;
++
++template <class T>
++using is_move_assignable_or_void = is_void_or<T, std::is_move_assignable<T>>;
++
++} // namespace detail
++
++namespace detail {
++struct no_init_t {};
++static constexpr no_init_t no_init{};
++
++// Implements the storage of the values, and ensures that the destructor is
++// trivial if it can be.
++//
++// This specialization is for where neither `T` or `E` is trivially
++// destructible, so the destructors must be called on destruction of the
++// `expected`
++template <class T, class E, bool = std::is_trivially_destructible<T>::value,
++          bool = std::is_trivially_destructible<E>::value>
++struct expected_storage_base {
++  constexpr expected_storage_base() : m_val(T{}), m_has_val(true) {}
++  constexpr expected_storage_base(no_init_t) : m_no_init(), m_has_val(false) {}
++
++  template <class... Args,
++            detail::enable_if_t<std::is_constructible<T, Args &&...>::value> * =
++                nullptr>
++  constexpr expected_storage_base(in_place_t, Args &&...args)
++      : m_val(std::forward<Args>(args)...), m_has_val(true) {}
++
++  template <class U, class... Args,
++            detail::enable_if_t<std::is_constructible<
++                T, std::initializer_list<U> &, Args &&...>::value> * = nullptr>
++  constexpr expected_storage_base(in_place_t, std::initializer_list<U> il,
++                                  Args &&...args)
++      : m_val(il, std::forward<Args>(args)...), m_has_val(true) {}
++  template <class... Args,
++            detail::enable_if_t<std::is_constructible<E, Args &&...>::value> * =
++                nullptr>
++  constexpr explicit expected_storage_base(unexpect_t, Args &&...args)
++      : m_unexpect(in_place, std::forward<Args>(args)...), m_has_val(false) {}
++
++  template <class U, class... Args,
++            detail::enable_if_t<std::is_constructible<
++                E, std::initializer_list<U> &, Args &&...>::value> * = nullptr>
++  constexpr explicit expected_storage_base(unexpect_t,
++                                           std::initializer_list<U> il,
++                                           Args &&...args)
++      : m_unexpect(in_place, il, std::forward<Args>(args)...), m_has_val(false) {}
++
++  ~expected_storage_base() {
++    if (m_has_val) {
++      m_val.~T();
++    } else {
++      m_unexpect.~unexpected<E>();
++    }
++  }
++  union {
++    T m_val;
++    unexpected<E> m_unexpect;
++    char m_no_init;
++  };
++  bool m_has_val;
++};
++
++// This specialization is for when both `T` and `E` are trivially-destructible,
++// so the destructor of the `expected` can be trivial.
++template <class T, class E> struct expected_storage_base<T, E, true, true> {
++  constexpr expected_storage_base() : m_val(T{}), m_has_val(true) {}
++  constexpr expected_storage_base(no_init_t) : m_no_init(), m_has_val(false) {}
++
++  template <class... Args,
++            detail::enable_if_t<std::is_constructible<T, Args &&...>::value> * =
++                nullptr>
++  constexpr expected_storage_base(in_place_t, Args &&...args)
++      : m_val(std::forward<Args>(args)...), m_has_val(true) {}
++
++  template <class U, class... Args,
++            detail::enable_if_t<std::is_constructible<
++                T, std::initializer_list<U> &, Args &&...>::value> * = nullptr>
++  constexpr expected_storage_base(in_place_t, std::initializer_list<U> il,
++                                  Args &&...args)
++      : m_val(il, std::forward<Args>(args)...), m_has_val(true) {}
++  template <class... Args,
++            detail::enable_if_t<std::is_constructible<E, Args &&...>::value> * =
++                nullptr>
++  constexpr explicit expected_storage_base(unexpect_t, Args &&...args)
++      : m_unexpect(in_place, std::forward<Args>(args)...), m_has_val(false) {}
++
++  template <class U, class... Args,
++            detail::enable_if_t<std::is_constructible<
++                E, std::initializer_list<U> &, Args &&...>::value> * = nullptr>
++  constexpr explicit expected_storage_base(unexpect_t,
++                                           std::initializer_list<U> il,
++                                           Args &&...args)
++      : m_unexpect(in_place, il, std::forward<Args>(args)...), m_has_val(false) {}
++
++  expected_storage_base(const expected_storage_base &) = default;     
++  expected_storage_base(expected_storage_base &&) = default;
++  expected_storage_base &operator=(const expected_storage_base &) = default;
++  expected_storage_base &operator=(expected_storage_base &&) = default;
++  ~expected_storage_base() = default;
++  union {
++    T m_val;
++    unexpected<E> m_unexpect;
++    char m_no_init;
++  };
++  bool m_has_val;
++};
++
++// T is trivial, E is not.
++template <class T, class E> struct expected_storage_base<T, E, true, false> {
++  constexpr expected_storage_base() : m_val(T{}), m_has_val(true) {}
++  Q23_TL_EXPECTED_MSVC2015_CONSTEXPR expected_storage_base(no_init_t)
++      : m_no_init(), m_has_val(false) {}
++
++  template <class... Args,
++            detail::enable_if_t<std::is_constructible<T, Args &&...>::value> * =
++                nullptr>
++  constexpr expected_storage_base(in_place_t, Args &&...args)
++      : m_val(std::forward<Args>(args)...), m_has_val(true) {}
++
++  template <class U, class... Args,
++            detail::enable_if_t<std::is_constructible<
++                T, std::initializer_list<U> &, Args &&...>::value> * = nullptr>
++  constexpr expected_storage_base(in_place_t, std::initializer_list<U> il,
++                                  Args &&...args)
++      : m_val(il, std::forward<Args>(args)...), m_has_val(true) {}
++  template <class... Args,
++            detail::enable_if_t<std::is_constructible<E, Args &&...>::value> * =
++                nullptr>
++  constexpr explicit expected_storage_base(unexpect_t, Args &&...args)
++      : m_unexpect(in_place, std::forward<Args>(args)...), m_has_val(false) {}
++
++  template <class U, class... Args,
++            detail::enable_if_t<std::is_constructible<
++                E, std::initializer_list<U> &, Args &&...>::value> * = nullptr>
++  constexpr explicit expected_storage_base(unexpect_t,
++                                           std::initializer_list<U> il,
++                                           Args &&...args)
++      : m_unexpect(in_place, il, std::forward<Args>(args)...), m_has_val(false) {}
++
++  expected_storage_base(const expected_storage_base &) = default;
++  expected_storage_base(expected_storage_base &&) = default;
++  expected_storage_base &operator=(const expected_storage_base &) = default;
++  expected_storage_base &operator=(expected_storage_base &&) = default;
++  ~expected_storage_base() {
++    if (!m_has_val) {
++      m_unexpect.~unexpected<E>();
++    }
++  }
++
++  union {
++    T m_val;
++    unexpected<E> m_unexpect;
++    char m_no_init;
++  };
++  bool m_has_val;
++};
++
++// E is trivial, T is not.
++template <class T, class E> struct expected_storage_base<T, E, false, true> {
++  constexpr expected_storage_base() : m_val(T{}), m_has_val(true) {}
++  constexpr expected_storage_base(no_init_t) : m_no_init(), m_has_val(false) {}
++
++  template <class... Args,
++            detail::enable_if_t<std::is_constructible<T, Args &&...>::value> * =
++                nullptr>
++  constexpr expected_storage_base(in_place_t, Args &&...args)
++      : m_val(std::forward<Args>(args)...), m_has_val(true) {}
++
++  template <class U, class... Args,
++            detail::enable_if_t<std::is_constructible<
++                T, std::initializer_list<U> &, Args &&...>::value> * = nullptr>
++  constexpr expected_storage_base(in_place_t, std::initializer_list<U> il,
++                                  Args &&...args)
++      : m_val(il, std::forward<Args>(args)...), m_has_val(true) {}
++  template <class... Args,
++            detail::enable_if_t<std::is_constructible<E, Args &&...>::value> * =
++                nullptr>
++  constexpr explicit expected_storage_base(unexpect_t, Args &&...args)
++      : m_unexpect(in_place, std::forward<Args>(args)...), m_has_val(false) {}
++
++  template <class U, class... Args,
++            detail::enable_if_t<std::is_constructible<
++                E, std::initializer_list<U> &, Args &&...>::value> * = nullptr>
++  constexpr explicit expected_storage_base(unexpect_t,
++                                           std::initializer_list<U> il,
++                                           Args &&...args)
++      : m_unexpect(in_place, il, std::forward<Args>(args)...),
++        m_has_val(false) {}
++
++  expected_storage_base(const expected_storage_base &) = default;
++  expected_storage_base(expected_storage_base &&) = default;
++  expected_storage_base &operator=(const expected_storage_base &) = default;
++  expected_storage_base &operator=(expected_storage_base &&) = default;
++  ~expected_storage_base() {
++    if (m_has_val) {
++      m_val.~T();
++    }
++  }
++  union {
++    T m_val;
++    unexpected<E> m_unexpect;
++    char m_no_init;
++  };
++  bool m_has_val;
++};
++
++// `T` is `void`, `E` is trivially-destructible
++template <class E> struct expected_storage_base<void, E, false, true> {
++  #if __GNUC__ <= 5
++  //no constexpr for GCC 4/5 bug
++  #else
++  Q23_TL_EXPECTED_MSVC2015_CONSTEXPR
++  #endif 
++  expected_storage_base() : m_has_val(true) {}
++     
++  constexpr expected_storage_base(no_init_t) : m_val(), m_has_val(false) {}
++
++  constexpr expected_storage_base(in_place_t) : m_has_val(true) {}
++
++  template <class... Args,
++            detail::enable_if_t<std::is_constructible<E, Args &&...>::value> * =
++                nullptr>
++  constexpr explicit expected_storage_base(unexpect_t, Args &&...args)
++      : m_unexpect(in_place, std::forward<Args>(args)...), m_has_val(false) {}
++
++  template <class U, class... Args,
++            detail::enable_if_t<std::is_constructible<
++                E, std::initializer_list<U> &, Args &&...>::value> * = nullptr>
++  constexpr explicit expected_storage_base(unexpect_t,
++                                           std::initializer_list<U> il,
++                                           Args &&...args)
++      : m_unexpect(in_place, il, std::forward<Args>(args)...), m_has_val(false) {}
++
++  expected_storage_base(const expected_storage_base &) = default;
++  expected_storage_base(expected_storage_base &&) = default;
++  expected_storage_base &operator=(const expected_storage_base &) = default;
++  expected_storage_base &operator=(expected_storage_base &&) = default;
++  ~expected_storage_base() = default;
++  struct dummy {};
++  union {
++    unexpected<E> m_unexpect;
++    dummy m_val;
++  };
++  bool m_has_val;
++};
++
++// `T` is `void`, `E` is not trivially-destructible
++template <class E> struct expected_storage_base<void, E, false, false> {
++  constexpr expected_storage_base() : m_dummy(), m_has_val(true) {}
++  constexpr expected_storage_base(no_init_t) : m_dummy(), m_has_val(false) {}
++
++  constexpr expected_storage_base(in_place_t) : m_dummy(), m_has_val(true) {}
++
++  template <class... Args,
++            detail::enable_if_t<std::is_constructible<E, Args &&...>::value> * =
++                nullptr>
++  constexpr explicit expected_storage_base(unexpect_t, Args &&...args)
++      : m_unexpect(in_place, std::forward<Args>(args)...), m_has_val(false) {}
++
++  template <class U, class... Args,
++            detail::enable_if_t<std::is_constructible<
++                E, std::initializer_list<U> &, Args &&...>::value> * = nullptr>
++  constexpr explicit expected_storage_base(unexpect_t,
++                                           std::initializer_list<U> il,
++                                           Args &&...args)
++      : m_unexpect(in_place, il, std::forward<Args>(args)...), m_has_val(false) {}
++
++  expected_storage_base(const expected_storage_base &) = default;
++  expected_storage_base(expected_storage_base &&) = default;
++  expected_storage_base &operator=(const expected_storage_base &) = default;
++  expected_storage_base &operator=(expected_storage_base &&) = default;
++  ~expected_storage_base() {
++    if (!m_has_val) {
++      m_unexpect.~unexpected<E>();
++    }
++  }
++
++  union {
++    unexpected<E> m_unexpect;
++    char m_dummy;
++  };
++  bool m_has_val;
++};
++
++// This base class provides some handy member functions which can be used in
++// further derived classes
++template <class T, class E>
++struct expected_operations_base : expected_storage_base<T, E> {
++  using expected_storage_base<T, E>::expected_storage_base;
++
++  template <class... Args> void construct(Args &&...args) noexcept {
++    new (std::addressof(this->m_val)) T(std::forward<Args>(args)...);
++    this->m_has_val = true;
++  }
++
++  template <class Rhs> void construct_with(Rhs &&rhs) noexcept {
++    new (std::addressof(this->m_val)) T(std::forward<Rhs>(rhs).get());
++    this->m_has_val = true;
++  }
++
++  template <class... Args> void construct_error(Args &&...args) noexcept {
++    new (std::addressof(this->m_unexpect))
++        unexpected<E>(std::forward<Args>(args)...);
++    this->m_has_val = false;
++  }
++
++#ifdef Q23_TL_EXPECTED_EXCEPTIONS_ENABLED
++
++  // These assign overloads ensure that the most efficient assignment
++  // implementation is used while maintaining the strong exception guarantee.
++  // The problematic case is where rhs has a value, but *this does not.
++  //
++  // This overload handles the case where we can just copy-construct `T`
++  // directly into place without throwing.
++  template <class U = T,
++            detail::enable_if_t<std::is_nothrow_copy_constructible<U>::value>
++                * = nullptr>
++  void assign(const expected_operations_base &rhs) noexcept {
++    if (!this->m_has_val && rhs.m_has_val) {
++      geterr().~unexpected<E>();
++      construct(rhs.get());
++    } else {
++      assign_common(rhs);
++    }
++  }
++
++  // This overload handles the case where we can attempt to create a copy of
++  // `T`, then no-throw move it into place if the copy was successful.
++  template <class U = T,
++            detail::enable_if_t<!std::is_nothrow_copy_constructible<U>::value &&
++                                std::is_nothrow_move_constructible<U>::value>
++                * = nullptr>
++  void assign(const expected_operations_base &rhs) noexcept {
++    if (!this->m_has_val && rhs.m_has_val) {
++      T tmp = rhs.get();
++      geterr().~unexpected<E>();
++      construct(std::move(tmp));
++    } else {
++      assign_common(rhs);
++    }
++  }
++
++  // This overload is the worst-case, where we have to move-construct the
++  // unexpected value into temporary storage, then try to copy the T into place.
++  // If the construction succeeds, then everything is fine, but if it throws,
++  // then we move the old unexpected value back into place before rethrowing the
++  // exception.
++  template <class U = T,
++            detail::enable_if_t<!std::is_nothrow_copy_constructible<U>::value &&
++                                !std::is_nothrow_move_constructible<U>::value>
++                * = nullptr>
++  void assign(const expected_operations_base &rhs) {
++    if (!this->m_has_val && rhs.m_has_val) {
++      auto tmp = std::move(geterr());
++      geterr().~unexpected<E>();
++
++#ifdef Q23_TL_EXPECTED_EXCEPTIONS_ENABLED
++      try {
++        construct(rhs.get());
++      } catch (...) {
++        geterr() = std::move(tmp);
++        throw;
++      }
++#else
++      construct(rhs.get());
++#endif
++    } else {
++      assign_common(rhs);
++    }
++  }
++
++  // These overloads do the same as above, but for rvalues
++  template <class U = T,
++            detail::enable_if_t<std::is_nothrow_move_constructible<U>::value>
++                * = nullptr>
++  void assign(expected_operations_base &&rhs) noexcept {
++    if (!this->m_has_val && rhs.m_has_val) {
++      geterr().~unexpected<E>();
++      construct(std::move(rhs).get());
++    } else {
++      assign_common(std::move(rhs));
++    }
++  }
++
++  template <class U = T,
++            detail::enable_if_t<!std::is_nothrow_move_constructible<U>::value>
++                * = nullptr>
++  void assign(expected_operations_base &&rhs) {
++    if (!this->m_has_val && rhs.m_has_val) {
++      auto tmp = std::move(geterr());
++      geterr().~unexpected<E>();
++#ifdef Q23_TL_EXPECTED_EXCEPTIONS_ENABLED
++      try {
++        construct(std::move(rhs).get());
++      } catch (...) {
++        geterr() = std::move(tmp);
++        throw;
++      }
++#else
++      construct(std::move(rhs).get());
++#endif
++    } else {
++      assign_common(std::move(rhs));
++    }
++  }
++
++#else
++
++  // If exceptions are disabled then we can just copy-construct
++  void assign(const expected_operations_base &rhs) noexcept {
++    if (!this->m_has_val && rhs.m_has_val) {
++      geterr().~unexpected<E>();
++      construct(rhs.get());
++    } else {
++      assign_common(rhs);
++    }
++  }
++
++  void assign(expected_operations_base &&rhs) noexcept {
++    if (!this->m_has_val && rhs.m_has_val) {
++      geterr().~unexpected<E>();
++      construct(std::move(rhs).get());
++    } else {
++      assign_common(std::move(rhs));
++    }
++  }
++
++#endif
++
++  // The common part of move/copy assigning
++  template <class Rhs> void assign_common(Rhs &&rhs) {
++    if (this->m_has_val) {
++      if (rhs.m_has_val) {
++        get() = std::forward<Rhs>(rhs).get();
++      } else {
++        destroy_val();
++        construct_error(std::forward<Rhs>(rhs).geterr());
++      }
++    } else {
++      if (!rhs.m_has_val) {
++        geterr() = std::forward<Rhs>(rhs).geterr();
++      }
++    }
++  }
++
++  bool has_value() const { return this->m_has_val; }
++
++  Q23_TL_EXPECTED_11_CONSTEXPR T &get() & { return this->m_val; }
++  constexpr const T &get() const & { return this->m_val; }
++  Q23_TL_EXPECTED_11_CONSTEXPR T &&get() && { return std::move(this->m_val); }
++#ifndef Q23_TL_EXPECTED_NO_CONSTRR
++  constexpr const T &&get() const && { return std::move(this->m_val); }
++#endif
++
++  Q23_TL_EXPECTED_11_CONSTEXPR unexpected<E> &geterr() & {
++    return this->m_unexpect;
++  }
++  constexpr const unexpected<E> &geterr() const & { return this->m_unexpect; }
++  Q23_TL_EXPECTED_11_CONSTEXPR unexpected<E> &&geterr() && {
++    return std::move(this->m_unexpect);
++  }
++#ifndef Q23_TL_EXPECTED_NO_CONSTRR
++  constexpr const unexpected<E> &&geterr() const && {
++    return std::move(this->m_unexpect);
++  }
++#endif
++
++  Q23_TL_EXPECTED_11_CONSTEXPR void destroy_val() { get().~T(); }
++};
++
++// This base class provides some handy member functions which can be used in
++// further derived classes
++template <class E>
++struct expected_operations_base<void, E> : expected_storage_base<void, E> {
++  using expected_storage_base<void, E>::expected_storage_base;
++
++  template <class... Args> void construct() noexcept { this->m_has_val = true; }
++
++  // This function doesn't use its argument, but needs it so that code in
++  // levels above this can work independently of whether T is void
++  template <class Rhs> void construct_with(Rhs &&) noexcept {
++    this->m_has_val = true;
++  }
++
++  template <class... Args> void construct_error(Args &&...args) noexcept {
++    new (std::addressof(this->m_unexpect))
++        unexpected<E>(std::forward<Args>(args)...);
++    this->m_has_val = false;
++  }
++
++  template <class Rhs> void assign(Rhs &&rhs) noexcept {
++    if (!this->m_has_val) {
++      if (rhs.m_has_val) {
++        geterr().~unexpected<E>();
++        construct();
++      } else {
++        geterr() = std::forward<Rhs>(rhs).geterr();
++      }
++    } else {
++      if (!rhs.m_has_val) {
++        construct_error(std::forward<Rhs>(rhs).geterr());
++      }
++    }
++  }
++
++  bool has_value() const { return this->m_has_val; }
++
++  Q23_TL_EXPECTED_11_CONSTEXPR unexpected<E> &geterr() & {
++    return this->m_unexpect;
++  }
++  constexpr const unexpected<E> &geterr() const & { return this->m_unexpect; }
++  Q23_TL_EXPECTED_11_CONSTEXPR unexpected<E> &&geterr() && {
++    return std::move(this->m_unexpect);
++  }
++#ifndef Q23_TL_EXPECTED_NO_CONSTRR
++  constexpr const unexpected<E> &&geterr() const && {
++    return std::move(this->m_unexpect);
++  }
++#endif
++
++  Q23_TL_EXPECTED_11_CONSTEXPR void destroy_val() {
++    // no-op
++  }
++};
++
++// This class manages conditionally having a trivial copy constructor
++// This specialization is for when T and E are trivially copy constructible
++template <class T, class E,
++          bool = is_void_or<T, Q23_TL_EXPECTED_IS_TRIVIALLY_COPY_CONSTRUCTIBLE(T)>::
++              value &&Q23_TL_EXPECTED_IS_TRIVIALLY_COPY_CONSTRUCTIBLE(E)::value,
++          bool = (is_copy_constructible_or_void<T>::value &&
++                  std::is_copy_constructible<E>::value)>
++struct expected_copy_base : expected_operations_base<T, E> {
++  using expected_operations_base<T, E>::expected_operations_base;
++};
++
++// This specialization is for when T or E are non-trivially copy constructible
++template <class T, class E>
++struct expected_copy_base<T, E, false, true> : expected_operations_base<T, E> {
++  using expected_operations_base<T, E>::expected_operations_base;
++
++  expected_copy_base() = default;
++  expected_copy_base(const expected_copy_base &rhs)
++      : expected_operations_base<T, E>(no_init) {
++    if (rhs.has_value()) {
++      this->construct_with(rhs);
++    } else {
++      this->construct_error(rhs.geterr());
++    }
++  }
++
++  expected_copy_base(expected_copy_base &&rhs) = default;
++  expected_copy_base &operator=(const expected_copy_base &rhs) = default;
++  expected_copy_base &operator=(expected_copy_base &&rhs) = default;
++};
++
++// This class manages conditionally having a trivial move constructor
++// Unfortunately there's no way to achieve this in GCC < 5 AFAIK, since it
++// doesn't implement an analogue to std::is_trivially_move_constructible. We
++// have to make do with a non-trivial move constructor even if T is trivially
++// move constructible
++#ifndef Q23_TL_EXPECTED_GCC49
++template <class T, class E,
++          bool = is_void_or<T, std::is_trivially_move_constructible<T>>::value
++              &&std::is_trivially_move_constructible<E>::value>
++struct expected_move_base : expected_copy_base<T, E> {
++  using expected_copy_base<T, E>::expected_copy_base;
++};
++#else
++template <class T, class E, bool = false> struct expected_move_base;
++#endif
++template <class T, class E>
++struct expected_move_base<T, E, false> : expected_copy_base<T, E> {
++  using expected_copy_base<T, E>::expected_copy_base;
++
++  expected_move_base() = default;
++  expected_move_base(const expected_move_base &rhs) = default;
++
++  expected_move_base(expected_move_base &&rhs) noexcept(
++      std::is_nothrow_move_constructible<T>::value)
++      : expected_copy_base<T, E>(no_init) {
++    if (rhs.has_value()) {
++      this->construct_with(std::move(rhs));
++    } else {
++      this->construct_error(std::move(rhs.geterr()));
++    }
++  }
++  expected_move_base &operator=(const expected_move_base &rhs) = default;
++  expected_move_base &operator=(expected_move_base &&rhs) = default;
++};
++
++// This class manages conditionally having a trivial copy assignment operator
++template <class T, class E,
++          bool = is_void_or<
++              T, conjunction<Q23_TL_EXPECTED_IS_TRIVIALLY_COPY_ASSIGNABLE(T),
++                             Q23_TL_EXPECTED_IS_TRIVIALLY_COPY_CONSTRUCTIBLE(T),
++                             Q23_TL_EXPECTED_IS_TRIVIALLY_DESTRUCTIBLE(T)>>::value
++              &&Q23_TL_EXPECTED_IS_TRIVIALLY_COPY_ASSIGNABLE(E)::value
++                  &&Q23_TL_EXPECTED_IS_TRIVIALLY_COPY_CONSTRUCTIBLE(E)::value
++                      &&Q23_TL_EXPECTED_IS_TRIVIALLY_DESTRUCTIBLE(E)::value,
++          bool = (is_copy_constructible_or_void<T>::value &&
++             std::is_copy_constructible<E>::value &&
++             is_copy_assignable_or_void<T>::value &&
++             std::is_copy_assignable<E>::value)>
++struct expected_copy_assign_base : expected_move_base<T, E> {
++  using expected_move_base<T, E>::expected_move_base;
++};
++
++template <class T, class E>
++struct expected_copy_assign_base<T, E, false, true> : expected_move_base<T, E> {
++  using expected_move_base<T, E>::expected_move_base;
++
++  expected_copy_assign_base() = default;
++  expected_copy_assign_base(const expected_copy_assign_base &rhs) = default;
++
++  expected_copy_assign_base(expected_copy_assign_base &&rhs) = default;
++  expected_copy_assign_base &operator=(const expected_copy_assign_base &rhs) {
++    this->assign(rhs);
++    return *this;
++  }
++  expected_copy_assign_base &
++  operator=(expected_copy_assign_base &&rhs) = default;
++};
++
++// This class manages conditionally having a trivial move assignment operator
++// Unfortunately there's no way to achieve this in GCC < 5 AFAIK, since it
++// doesn't implement an analogue to std::is_trivially_move_assignable. We have
++// to make do with a non-trivial move assignment operator even if T is trivially
++// move assignable
++#ifndef Q23_TL_EXPECTED_GCC49
++template <class T, class E,
++          bool =
++              is_void_or<T, conjunction<std::is_trivially_destructible<T>,
++                                        std::is_trivially_move_constructible<T>,
++                                        std::is_trivially_move_assignable<T>>>::
++                  value &&std::is_trivially_destructible<E>::value
++                      &&std::is_trivially_move_constructible<E>::value
++                          &&std::is_trivially_move_assignable<E>::value>
++struct expected_move_assign_base : expected_copy_assign_base<T, E> {
++  using expected_copy_assign_base<T, E>::expected_copy_assign_base;
++};
++#else
++template <class T, class E, bool = false> struct expected_move_assign_base;
++#endif
++
++template <class T, class E>
++struct expected_move_assign_base<T, E, false>
++    : expected_copy_assign_base<T, E> {
++  using expected_copy_assign_base<T, E>::expected_copy_assign_base;
++
++  expected_move_assign_base() = default;
++  expected_move_assign_base(const expected_move_assign_base &rhs) = default;
++
++  expected_move_assign_base(expected_move_assign_base &&rhs) = default;
++
++  expected_move_assign_base &
++  operator=(const expected_move_assign_base &rhs) = default;
++
++  expected_move_assign_base &
++  operator=(expected_move_assign_base &&rhs) noexcept(
++      std::is_nothrow_move_constructible<T>::value
++          &&std::is_nothrow_move_assignable<T>::value) {
++    this->assign(std::move(rhs));
++    return *this;
++  }
++};
++
++// expected_delete_ctor_base will conditionally delete copy and move
++// constructors depending on whether T is copy/move constructible
++template <class T, class E,
++          bool EnableCopy = (is_copy_constructible_or_void<T>::value &&
++                             std::is_copy_constructible<E>::value),
++          bool EnableMove = (is_move_constructible_or_void<T>::value &&
++                             std::is_move_constructible<E>::value)>
++struct expected_delete_ctor_base {
++  expected_delete_ctor_base() = default;
++  expected_delete_ctor_base(const expected_delete_ctor_base &) = default;
++  expected_delete_ctor_base(expected_delete_ctor_base &&) noexcept = default;
++  expected_delete_ctor_base &
++  operator=(const expected_delete_ctor_base &) = default;
++  expected_delete_ctor_base &
++  operator=(expected_delete_ctor_base &&) noexcept = default;
++};
++
++template <class T, class E>
++struct expected_delete_ctor_base<T, E, true, false> {
++  expected_delete_ctor_base() = default;
++  expected_delete_ctor_base(const expected_delete_ctor_base &) = default;
++  expected_delete_ctor_base(expected_delete_ctor_base &&) noexcept = delete;
++  expected_delete_ctor_base &
++  operator=(const expected_delete_ctor_base &) = default;
++  expected_delete_ctor_base &
++  operator=(expected_delete_ctor_base &&) noexcept = default;
++};
++
++template <class T, class E>
++struct expected_delete_ctor_base<T, E, false, true> {
++  expected_delete_ctor_base() = default;
++  expected_delete_ctor_base(const expected_delete_ctor_base &) = delete;
++  expected_delete_ctor_base(expected_delete_ctor_base &&) noexcept = default;
++  expected_delete_ctor_base &
++  operator=(const expected_delete_ctor_base &) = default;
++  expected_delete_ctor_base &
++  operator=(expected_delete_ctor_base &&) noexcept = default;
++};
++
++template <class T, class E>
++struct expected_delete_ctor_base<T, E, false, false> {
++  expected_delete_ctor_base() = default;
++  expected_delete_ctor_base(const expected_delete_ctor_base &) = delete;
++  expected_delete_ctor_base(expected_delete_ctor_base &&) noexcept = delete;
++  expected_delete_ctor_base &
++  operator=(const expected_delete_ctor_base &) = default;
++  expected_delete_ctor_base &
++  operator=(expected_delete_ctor_base &&) noexcept = default;
++};
++
++// expected_delete_assign_base will conditionally delete copy and move
++// constructors depending on whether T and E are copy/move constructible +
++// assignable
++template <class T, class E,
++          bool EnableCopy = (is_copy_constructible_or_void<T>::value &&
++                             std::is_copy_constructible<E>::value &&
++                             is_copy_assignable_or_void<T>::value &&
++                             std::is_copy_assignable<E>::value),
++          bool EnableMove = (is_move_constructible_or_void<T>::value &&
++                             std::is_move_constructible<E>::value &&
++                             is_move_assignable_or_void<T>::value &&
++                             std::is_move_assignable<E>::value)>
++struct expected_delete_assign_base {
++  expected_delete_assign_base() = default;
++  expected_delete_assign_base(const expected_delete_assign_base &) = default;
++  expected_delete_assign_base(expected_delete_assign_base &&) noexcept =
++      default;
++  expected_delete_assign_base &
++  operator=(const expected_delete_assign_base &) = default;
++  expected_delete_assign_base &
++  operator=(expected_delete_assign_base &&) noexcept = default;
++};
++
++template <class T, class E>
++struct expected_delete_assign_base<T, E, true, false> {
++  expected_delete_assign_base() = default;
++  expected_delete_assign_base(const expected_delete_assign_base &) = default;
++  expected_delete_assign_base(expected_delete_assign_base &&) noexcept =
++      default;
++  expected_delete_assign_base &
++  operator=(const expected_delete_assign_base &) = default;
++  expected_delete_assign_base &
++  operator=(expected_delete_assign_base &&) noexcept = delete;
++};
++
++template <class T, class E>
++struct expected_delete_assign_base<T, E, false, true> {
++  expected_delete_assign_base() = default;
++  expected_delete_assign_base(const expected_delete_assign_base &) = default;
++  expected_delete_assign_base(expected_delete_assign_base &&) noexcept =
++      default;
++  expected_delete_assign_base &
++  operator=(const expected_delete_assign_base &) = delete;
++  expected_delete_assign_base &
++  operator=(expected_delete_assign_base &&) noexcept = default;
++};
++
++template <class T, class E>
++struct expected_delete_assign_base<T, E, false, false> {
++  expected_delete_assign_base() = default;
++  expected_delete_assign_base(const expected_delete_assign_base &) = default;
++  expected_delete_assign_base(expected_delete_assign_base &&) noexcept =
++      default;
++  expected_delete_assign_base &
++  operator=(const expected_delete_assign_base &) = delete;
++  expected_delete_assign_base &
++  operator=(expected_delete_assign_base &&) noexcept = delete;
++};
++
++// This is needed to be able to construct the expected_default_ctor_base which
++// follows, while still conditionally deleting the default constructor.
++struct default_constructor_tag {
++  explicit constexpr default_constructor_tag() = default;
++};
++
++// expected_default_ctor_base will ensure that expected has a deleted default
++// constructor if T is not default constructible.
++// This specialization is for when T is default constructible
++template <class T, class E,
++          bool Enable =
++              std::is_default_constructible<T>::value || std::is_void<T>::value>
++struct expected_default_ctor_base {
++  constexpr expected_default_ctor_base() noexcept = default;
++  constexpr expected_default_ctor_base(
++      expected_default_ctor_base const &) noexcept = default;
++  constexpr expected_default_ctor_base(expected_default_ctor_base &&) noexcept =
++      default;
++  expected_default_ctor_base &
++  operator=(expected_default_ctor_base const &) noexcept = default;
++  expected_default_ctor_base &
++  operator=(expected_default_ctor_base &&) noexcept = default;
++
++  constexpr explicit expected_default_ctor_base(default_constructor_tag) {}
++};
++
++// This specialization is for when T is not default constructible
++template <class T, class E> struct expected_default_ctor_base<T, E, false> {
++  constexpr expected_default_ctor_base() noexcept = delete;
++  constexpr expected_default_ctor_base(
++      expected_default_ctor_base const &) noexcept = default;
++  constexpr expected_default_ctor_base(expected_default_ctor_base &&) noexcept =
++      default;
++  expected_default_ctor_base &
++  operator=(expected_default_ctor_base const &) noexcept = default;
++  expected_default_ctor_base &
++  operator=(expected_default_ctor_base &&) noexcept = default;
++
++  constexpr explicit expected_default_ctor_base(default_constructor_tag) {}
++};
++} // namespace detail
++
++template <class E> class bad_expected_access : public std::exception {
++public:
++  explicit bad_expected_access(E e) : m_val(std::move(e)) {}
++
++  virtual const char *what() const noexcept override {
++    return "Bad expected access";
++  }
++
++  const E &error() const & { return m_val; }
++  E &error() & { return m_val; }
++  const E &&error() const && { return std::move(m_val); }
++  E &&error() && { return std::move(m_val); }
++
++private:
++  E m_val;
++};
++
++/// An `expected<T, E>` object is an object that contains the storage for
++/// another object and manages the lifetime of this contained object `T`.
++/// Alternatively it could contain the storage for another unexpected object
++/// `E`. The contained object may not be initialized after the expected object
++/// has been initialized, and may not be destroyed before the expected object
++/// has been destroyed. The initialization state of the contained object is
++/// tracked by the expected object.
++template <class T, class E>
++class expected : private detail::expected_move_assign_base<T, E>,
++                 private detail::expected_delete_ctor_base<T, E>,
++                 private detail::expected_delete_assign_base<T, E>,
++                 private detail::expected_default_ctor_base<T, E> {
++  static_assert(!std::is_reference<T>::value, "T must not be a reference");
++  static_assert(!std::is_same<T, std::remove_cv<in_place_t>::type>::value,
++                "T must not be in_place_t");
++  static_assert(!std::is_same<T, std::remove_cv<unexpect_t>::type>::value,
++                "T must not be unexpect_t");
++  static_assert(
++      !std::is_same<T, typename std::remove_cv<unexpected<E>>::type>::value,
++      "T must not be unexpected<E>");
++  static_assert(!std::is_reference<E>::value, "E must not be a reference");
++
++  T *valptr() { return std::addressof(this->m_val); }
++  const T *valptr() const { return std::addressof(this->m_val); }
++  unexpected<E> *errptr() { return std::addressof(this->m_unexpect); }
++  const unexpected<E> *errptr() const {
++    return std::addressof(this->m_unexpect);
++  }
++
++  template <class U = T,
++            detail::enable_if_t<!std::is_void<U>::value> * = nullptr>
++  Q23_TL_EXPECTED_11_CONSTEXPR U &val() {
++    return this->m_val;
++  }
++  Q23_TL_EXPECTED_11_CONSTEXPR unexpected<E> &err() { return this->m_unexpect; }
++
++  template <class U = T,
++            detail::enable_if_t<!std::is_void<U>::value> * = nullptr>
++  constexpr const U &val() const {
++    return this->m_val;
++  }
++  constexpr const unexpected<E> &err() const { return this->m_unexpect; }
++
++  using impl_base = detail::expected_move_assign_base<T, E>;
++  using ctor_base = detail::expected_default_ctor_base<T, E>;
++
++public:
++  typedef T value_type;
++  typedef E error_type;
++  typedef unexpected<E> unexpected_type;
++
++#if defined(Q23_TL_EXPECTED_CXX14) && !defined(Q23_TL_EXPECTED_GCC49) &&               \
++    !defined(Q23_TL_EXPECTED_GCC54) && !defined(Q23_TL_EXPECTED_GCC55)
++  template <class F> Q23_TL_EXPECTED_11_CONSTEXPR auto and_then(F &&f) & {
++    return and_then_impl(*this, std::forward<F>(f));
++  }
++  template <class F> Q23_TL_EXPECTED_11_CONSTEXPR auto and_then(F &&f) && {
++    return and_then_impl(std::move(*this), std::forward<F>(f));
++  }
++  template <class F> constexpr auto and_then(F &&f) const & {
++    return and_then_impl(*this, std::forward<F>(f));
++  }
++
++#ifndef Q23_TL_EXPECTED_NO_CONSTRR
++  template <class F> constexpr auto and_then(F &&f) const && {
++    return and_then_impl(std::move(*this), std::forward<F>(f));
++  }
++#endif
++
++#else
++  template <class F>
++  Q23_TL_EXPECTED_11_CONSTEXPR auto
++  and_then(F &&f) & -> decltype(and_then_impl(std::declval<expected &>(),
++                                              std::forward<F>(f))) {
++    return and_then_impl(*this, std::forward<F>(f));
++  }
++  template <class F>
++  Q23_TL_EXPECTED_11_CONSTEXPR auto
++  and_then(F &&f) && -> decltype(and_then_impl(std::declval<expected &&>(),
++                                               std::forward<F>(f))) {
++    return and_then_impl(std::move(*this), std::forward<F>(f));
++  }
++  template <class F>
++  constexpr auto and_then(F &&f) const & -> decltype(and_then_impl(
++      std::declval<expected const &>(), std::forward<F>(f))) {
++    return and_then_impl(*this, std::forward<F>(f));
++  }
++
++#ifndef Q23_TL_EXPECTED_NO_CONSTRR
++  template <class F>
++  constexpr auto and_then(F &&f) const && -> decltype(and_then_impl(
++      std::declval<expected const &&>(), std::forward<F>(f))) {
++    return and_then_impl(std::move(*this), std::forward<F>(f));
++  }
++#endif
++#endif
++
++#if defined(Q23_TL_EXPECTED_CXX14) && !defined(Q23_TL_EXPECTED_GCC49) &&               \
++    !defined(Q23_TL_EXPECTED_GCC54) && !defined(Q23_TL_EXPECTED_GCC55)
++  template <class F> Q23_TL_EXPECTED_11_CONSTEXPR auto map(F &&f) & {
++    return expected_map_impl(*this, std::forward<F>(f));
++  }
++  template <class F> Q23_TL_EXPECTED_11_CONSTEXPR auto map(F &&f) && {
++    return expected_map_impl(std::move(*this), std::forward<F>(f));
++  }
++  template <class F> constexpr auto map(F &&f) const & {
++    return expected_map_impl(*this, std::forward<F>(f));
++  }
++  template <class F> constexpr auto map(F &&f) const && {
++    return expected_map_impl(std::move(*this), std::forward<F>(f));
++  }
++#else
++  template <class F>
++  Q23_TL_EXPECTED_11_CONSTEXPR decltype(expected_map_impl(
++      std::declval<expected &>(), std::declval<F &&>()))
++  map(F &&f) & {
++    return expected_map_impl(*this, std::forward<F>(f));
++  }
++  template <class F>
++  Q23_TL_EXPECTED_11_CONSTEXPR decltype(expected_map_impl(std::declval<expected>(),
++                                                      std::declval<F &&>()))
++  map(F &&f) && {
++    return expected_map_impl(std::move(*this), std::forward<F>(f));
++  }
++  template <class F>
++  constexpr decltype(expected_map_impl(std::declval<const expected &>(),
++                                       std::declval<F &&>()))
++  map(F &&f) const & {
++    return expected_map_impl(*this, std::forward<F>(f));
++  }
++
++#ifndef Q23_TL_EXPECTED_NO_CONSTRR
++  template <class F>
++  constexpr decltype(expected_map_impl(std::declval<const expected &&>(),
++                                       std::declval<F &&>()))
++  map(F &&f) const && {
++    return expected_map_impl(std::move(*this), std::forward<F>(f));
++  }
++#endif
++#endif
++
++#if defined(Q23_TL_EXPECTED_CXX14) && !defined(Q23_TL_EXPECTED_GCC49) &&               \
++    !defined(Q23_TL_EXPECTED_GCC54) && !defined(Q23_TL_EXPECTED_GCC55)
++  template <class F> Q23_TL_EXPECTED_11_CONSTEXPR auto transform(F &&f) & {
++    return expected_map_impl(*this, std::forward<F>(f));
++  }
++  template <class F> Q23_TL_EXPECTED_11_CONSTEXPR auto transform(F &&f) && {
++    return expected_map_impl(std::move(*this), std::forward<F>(f));
++  }
++  template <class F> constexpr auto transform(F &&f) const & {
++    return expected_map_impl(*this, std::forward<F>(f));
++  }
++  template <class F> constexpr auto transform(F &&f) const && {
++    return expected_map_impl(std::move(*this), std::forward<F>(f));
++  }
++#else
++  template <class F>
++  Q23_TL_EXPECTED_11_CONSTEXPR decltype(expected_map_impl(
++      std::declval<expected &>(), std::declval<F &&>()))
++  transform(F &&f) & {
++    return expected_map_impl(*this, std::forward<F>(f));
++  }
++  template <class F>
++  Q23_TL_EXPECTED_11_CONSTEXPR decltype(expected_map_impl(std::declval<expected>(),
++                                                      std::declval<F &&>()))
++  transform(F &&f) && {
++    return expected_map_impl(std::move(*this), std::forward<F>(f));
++  }
++  template <class F>
++  constexpr decltype(expected_map_impl(std::declval<const expected &>(),
++                                       std::declval<F &&>()))
++  transform(F &&f) const & {
++    return expected_map_impl(*this, std::forward<F>(f));
++  }
++
++#ifndef Q23_TL_EXPECTED_NO_CONSTRR
++  template <class F>
++  constexpr decltype(expected_map_impl(std::declval<const expected &&>(),
++                                       std::declval<F &&>()))
++  transform(F &&f) const && {
++    return expected_map_impl(std::move(*this), std::forward<F>(f));
++  }
++#endif
++#endif
++
++#if defined(Q23_TL_EXPECTED_CXX14) && !defined(Q23_TL_EXPECTED_GCC49) &&               \
++    !defined(Q23_TL_EXPECTED_GCC54) && !defined(Q23_TL_EXPECTED_GCC55)
++  template <class F> Q23_TL_EXPECTED_11_CONSTEXPR auto map_error(F &&f) & {
++    return map_error_impl(*this, std::forward<F>(f));
++  }
++  template <class F> Q23_TL_EXPECTED_11_CONSTEXPR auto map_error(F &&f) && {
++    return map_error_impl(std::move(*this), std::forward<F>(f));
++  }
++  template <class F> constexpr auto map_error(F &&f) const & {
++    return map_error_impl(*this, std::forward<F>(f));
++  }
++  template <class F> constexpr auto map_error(F &&f) const && {
++    return map_error_impl(std::move(*this), std::forward<F>(f));
++  }
++#else
++  template <class F>
++  Q23_TL_EXPECTED_11_CONSTEXPR decltype(map_error_impl(std::declval<expected &>(),
++                                                   std::declval<F &&>()))
++  map_error(F &&f) & {
++    return map_error_impl(*this, std::forward<F>(f));
++  }
++  template <class F>
++  Q23_TL_EXPECTED_11_CONSTEXPR decltype(map_error_impl(std::declval<expected &&>(),
++                                                   std::declval<F &&>()))
++  map_error(F &&f) && {
++    return map_error_impl(std::move(*this), std::forward<F>(f));
++  }
++  template <class F>
++  constexpr decltype(map_error_impl(std::declval<const expected &>(),
++                                    std::declval<F &&>()))
++  map_error(F &&f) const & {
++    return map_error_impl(*this, std::forward<F>(f));
++  }
++
++#ifndef Q23_TL_EXPECTED_NO_CONSTRR
++  template <class F>
++  constexpr decltype(map_error_impl(std::declval<const expected &&>(),
++                                    std::declval<F &&>()))
++  map_error(F &&f) const && {
++    return map_error_impl(std::move(*this), std::forward<F>(f));
++  }
++#endif
++#endif
++#if defined(Q23_TL_EXPECTED_CXX14) && !defined(Q23_TL_EXPECTED_GCC49) &&               \
++    !defined(Q23_TL_EXPECTED_GCC54) && !defined(Q23_TL_EXPECTED_GCC55)
++  template <class F> Q23_TL_EXPECTED_11_CONSTEXPR auto transform_error(F &&f) & {
++    return map_error_impl(*this, std::forward<F>(f));
++  }
++  template <class F> Q23_TL_EXPECTED_11_CONSTEXPR auto transform_error(F &&f) && {
++    return map_error_impl(std::move(*this), std::forward<F>(f));
++  }
++  template <class F> constexpr auto transform_error(F &&f) const & {
++    return map_error_impl(*this, std::forward<F>(f));
++  }
++  template <class F> constexpr auto transform_error(F &&f) const && {
++    return map_error_impl(std::move(*this), std::forward<F>(f));
++  }
++#else
++  template <class F>
++  Q23_TL_EXPECTED_11_CONSTEXPR decltype(map_error_impl(std::declval<expected &>(),
++                                                   std::declval<F &&>()))
++  transform_error(F &&f) & {
++    return map_error_impl(*this, std::forward<F>(f));
++  }
++  template <class F>
++  Q23_TL_EXPECTED_11_CONSTEXPR decltype(map_error_impl(std::declval<expected &&>(),
++                                                   std::declval<F &&>()))
++  transform_error(F &&f) && {
++    return map_error_impl(std::move(*this), std::forward<F>(f));
++  }
++  template <class F>
++  constexpr decltype(map_error_impl(std::declval<const expected &>(),
++                                    std::declval<F &&>()))
++  transform_error(F &&f) const & {
++    return map_error_impl(*this, std::forward<F>(f));
++  }
++
++#ifndef Q23_TL_EXPECTED_NO_CONSTRR
++  template <class F>
++  constexpr decltype(map_error_impl(std::declval<const expected &&>(),
++                                    std::declval<F &&>()))
++  transform_error(F &&f) const && {
++    return map_error_impl(std::move(*this), std::forward<F>(f));
++  }
++#endif
++#endif
++  template <class F> expected Q23_TL_EXPECTED_11_CONSTEXPR or_else(F &&f) & {
++    return or_else_impl(*this, std::forward<F>(f));
++  }
++
++  template <class F> expected Q23_TL_EXPECTED_11_CONSTEXPR or_else(F &&f) && {
++    return or_else_impl(std::move(*this), std::forward<F>(f));
++  }
++
++  template <class F> expected constexpr or_else(F &&f) const & {
++    return or_else_impl(*this, std::forward<F>(f));
++  }
++
++#ifndef Q23_TL_EXPECTED_NO_CONSTRR
++  template <class F> expected constexpr or_else(F &&f) const && {
++    return or_else_impl(std::move(*this), std::forward<F>(f));
++  }
++#endif
++  constexpr expected() = default;
++  constexpr expected(const expected &rhs) = default;
++  constexpr expected(expected &&rhs) = default;
++  expected &operator=(const expected &rhs) = default;
++  expected &operator=(expected &&rhs) = default;
++
++  template <class... Args,
++            detail::enable_if_t<std::is_constructible<T, Args &&...>::value> * =
++                nullptr>
++  constexpr expected(in_place_t, Args &&...args)
++      : impl_base(in_place, std::forward<Args>(args)...),
++        ctor_base(detail::default_constructor_tag{}) {}
++
++  template <class U, class... Args,
++            detail::enable_if_t<std::is_constructible<
++                T, std::initializer_list<U> &, Args &&...>::value> * = nullptr>
++  constexpr expected(in_place_t, std::initializer_list<U> il, Args &&...args)
++      : impl_base(in_place, il, std::forward<Args>(args)...),
++        ctor_base(detail::default_constructor_tag{}) {}
++
++  template <class G = E,
++            detail::enable_if_t<std::is_constructible<E, const G &>::value> * =
++                nullptr,
++            detail::enable_if_t<!std::is_convertible<const G &, E>::value> * =
++                nullptr>
++  explicit constexpr expected(const unexpected<G> &e)
++      : impl_base(unexpect, e.error()),
++        ctor_base(detail::default_constructor_tag{}) {}
++
++  template <
++      class G = E,
++      detail::enable_if_t<std::is_constructible<E, const G &>::value> * =
++          nullptr,
++      detail::enable_if_t<std::is_convertible<const G &, E>::value> * = nullptr>
++  constexpr expected(unexpected<G> const &e)
++      : impl_base(unexpect, e.error()),
++        ctor_base(detail::default_constructor_tag{}) {}
++
++  template <
++      class G = E,
++      detail::enable_if_t<std::is_constructible<E, G &&>::value> * = nullptr,
++      detail::enable_if_t<!std::is_convertible<G &&, E>::value> * = nullptr>
++  explicit constexpr expected(unexpected<G> &&e) noexcept(
++      std::is_nothrow_constructible<E, G &&>::value)
++      : impl_base(unexpect, std::move(e.error())),
++        ctor_base(detail::default_constructor_tag{}) {}
++
++  template <
++      class G = E,
++      detail::enable_if_t<std::is_constructible<E, G &&>::value> * = nullptr,
++      detail::enable_if_t<std::is_convertible<G &&, E>::value> * = nullptr>
++  constexpr expected(unexpected<G> &&e) noexcept(
++      std::is_nothrow_constructible<E, G &&>::value)
++      : impl_base(unexpect, std::move(e.error())),
++        ctor_base(detail::default_constructor_tag{}) {}
++
++  template <class... Args,
++            detail::enable_if_t<std::is_constructible<E, Args &&...>::value> * =
++                nullptr>
++  constexpr explicit expected(unexpect_t, Args &&...args)
++      : impl_base(unexpect, std::forward<Args>(args)...),
++        ctor_base(detail::default_constructor_tag{}) {}
++
++  template <class U, class... Args,
++            detail::enable_if_t<std::is_constructible<
++                E, std::initializer_list<U> &, Args &&...>::value> * = nullptr>
++  constexpr explicit expected(unexpect_t, std::initializer_list<U> il,
++                              Args &&...args)
++      : impl_base(unexpect, il, std::forward<Args>(args)...),
++        ctor_base(detail::default_constructor_tag{}) {}
++
++  template <class U, class G,
++            detail::enable_if_t<!(std::is_convertible<U const &, T>::value &&
++                                  std::is_convertible<G const &, E>::value)> * =
++                nullptr,
++            detail::expected_enable_from_other<T, E, U, G, const U &, const G &>
++                * = nullptr>
++  explicit Q23_TL_EXPECTED_11_CONSTEXPR expected(const expected<U, G> &rhs)
++      : ctor_base(detail::default_constructor_tag{}) {
++    if (rhs.has_value()) {
++      this->construct(*rhs);
++    } else {
++      this->construct_error(rhs.error());
++    }
++  }
++
++  template <class U, class G,
++            detail::enable_if_t<(std::is_convertible<U const &, T>::value &&
++                                 std::is_convertible<G const &, E>::value)> * =
++                nullptr,
++            detail::expected_enable_from_other<T, E, U, G, const U &, const G &>
++                * = nullptr>
++  Q23_TL_EXPECTED_11_CONSTEXPR expected(const expected<U, G> &rhs)
++      : ctor_base(detail::default_constructor_tag{}) {
++    if (rhs.has_value()) {
++      this->construct(*rhs);
++    } else {
++      this->construct_error(rhs.error());
++    }
++  }
++
++  template <
++      class U, class G,
++      detail::enable_if_t<!(std::is_convertible<U &&, T>::value &&
++                            std::is_convertible<G &&, E>::value)> * = nullptr,
++      detail::expected_enable_from_other<T, E, U, G, U &&, G &&> * = nullptr>
++  explicit Q23_TL_EXPECTED_11_CONSTEXPR expected(expected<U, G> &&rhs)
++      : ctor_base(detail::default_constructor_tag{}) {
++    if (rhs.has_value()) {
++      this->construct(std::move(*rhs));
++    } else {
++      this->construct_error(std::move(rhs.error()));
++    }
++  }
++
++  template <
++      class U, class G,
++      detail::enable_if_t<(std::is_convertible<U &&, T>::value &&
++                           std::is_convertible<G &&, E>::value)> * = nullptr,
++      detail::expected_enable_from_other<T, E, U, G, U &&, G &&> * = nullptr>
++  Q23_TL_EXPECTED_11_CONSTEXPR expected(expected<U, G> &&rhs)
++      : ctor_base(detail::default_constructor_tag{}) {
++    if (rhs.has_value()) {
++      this->construct(std::move(*rhs));
++    } else {
++      this->construct_error(std::move(rhs.error()));
++    }
++  }
++
++  template <
++      class U = T,
++      detail::enable_if_t<!std::is_convertible<U &&, T>::value> * = nullptr,
++      detail::expected_enable_forward_value<T, E, U> * = nullptr>
++  explicit Q23_TL_EXPECTED_MSVC2015_CONSTEXPR expected(U &&v)
++      : expected(in_place, std::forward<U>(v)) {}
++
++  template <
++      class U = T,
++      detail::enable_if_t<std::is_convertible<U &&, T>::value> * = nullptr,
++      detail::expected_enable_forward_value<T, E, U> * = nullptr>
++  Q23_TL_EXPECTED_MSVC2015_CONSTEXPR expected(U &&v)
++      : expected(in_place, std::forward<U>(v)) {}
++
++  template <
++      class U = T, class G = T,
++      detail::enable_if_t<std::is_nothrow_constructible<T, U &&>::value> * =
++          nullptr,
++      detail::enable_if_t<!std::is_void<G>::value> * = nullptr,
++      detail::enable_if_t<
++          (!std::is_same<expected<T, E>, detail::decay_t<U>>::value &&
++           !detail::conjunction<std::is_scalar<T>,
++                                std::is_same<T, detail::decay_t<U>>>::value &&
++           std::is_constructible<T, U>::value &&
++           std::is_assignable<G &, U>::value &&
++           std::is_nothrow_move_constructible<E>::value)> * = nullptr>
++  expected &operator=(U &&v) {
++    if (has_value()) {
++      val() = std::forward<U>(v);
++    } else {
++      err().~unexpected<E>();
++      ::new (valptr()) T(std::forward<U>(v));
++      this->m_has_val = true;
++    }
++
++    return *this;
++  }
++
++  template <
++      class U = T, class G = T,
++      detail::enable_if_t<!std::is_nothrow_constructible<T, U &&>::value> * =
++          nullptr,
++      detail::enable_if_t<!std::is_void<U>::value> * = nullptr,
++      detail::enable_if_t<
++          (!std::is_same<expected<T, E>, detail::decay_t<U>>::value &&
++           !detail::conjunction<std::is_scalar<T>,
++                                std::is_same<T, detail::decay_t<U>>>::value &&
++           std::is_constructible<T, U>::value &&
++           std::is_assignable<G &, U>::value &&
++           std::is_nothrow_move_constructible<E>::value)> * = nullptr>
++  expected &operator=(U &&v) {
++    if (has_value()) {
++      val() = std::forward<U>(v);
++    } else {
++      auto tmp = std::move(err());
++      err().~unexpected<E>();
++
++#ifdef Q23_TL_EXPECTED_EXCEPTIONS_ENABLED
++      try {
++        ::new (valptr()) T(std::forward<U>(v));
++        this->m_has_val = true;
++      } catch (...) {
++        err() = std::move(tmp);
++        throw;
++      }
++#else
++      ::new (valptr()) T(std::forward<U>(v));
++      this->m_has_val = true;
++#endif
++    }
++
++    return *this;
++  }
++
++  template <class G = E,
++            detail::enable_if_t<std::is_nothrow_copy_constructible<G>::value &&
++                                std::is_assignable<G &, G>::value> * = nullptr>
++  expected &operator=(const unexpected<G> &rhs) {
++    if (!has_value()) {
++      err() = rhs;
++    } else {
++      this->destroy_val();
++      ::new (errptr()) unexpected<E>(rhs);
++      this->m_has_val = false;
++    }
++
++    return *this;
++  }
++
++  template <class G = E,
++            detail::enable_if_t<std::is_nothrow_move_constructible<G>::value &&
++                                std::is_move_assignable<G>::value> * = nullptr>
++  expected &operator=(unexpected<G> &&rhs) noexcept {
++    if (!has_value()) {
++      err() = std::move(rhs);
++    } else {
++      this->destroy_val();
++      ::new (errptr()) unexpected<E>(std::move(rhs));
++      this->m_has_val = false;
++    }
++
++    return *this;
++  }
++
++  template <class... Args, detail::enable_if_t<std::is_nothrow_constructible<
++                               T, Args &&...>::value> * = nullptr>
++  void emplace(Args &&...args) {
++    if (has_value()) {
++      val().~T();
++    } else {
++      err().~unexpected<E>();
++      this->m_has_val = true;
++    }
++    ::new (valptr()) T(std::forward<Args>(args)...);
++  }
++
++  template <class... Args, detail::enable_if_t<!std::is_nothrow_constructible<
++                               T, Args &&...>::value> * = nullptr>
++  void emplace(Args &&...args) {
++    if (has_value()) {
++      val().~T();
++      ::new (valptr()) T(std::forward<Args>(args)...);
++    } else {
++      auto tmp = std::move(err());
++      err().~unexpected<E>();
++
++#ifdef Q23_TL_EXPECTED_EXCEPTIONS_ENABLED
++      try {
++        ::new (valptr()) T(std::forward<Args>(args)...);
++        this->m_has_val = true;
++      } catch (...) {
++        err() = std::move(tmp);
++        throw;
++      }
++#else
++      ::new (valptr()) T(std::forward<Args>(args)...);
++      this->m_has_val = true;
++#endif
++    }
++  }
++
++  template <class U, class... Args,
++            detail::enable_if_t<std::is_nothrow_constructible<
++                T, std::initializer_list<U> &, Args &&...>::value> * = nullptr>
++  void emplace(std::initializer_list<U> il, Args &&...args) {
++    if (has_value()) {
++      T t(il, std::forward<Args>(args)...);
++      val() = std::move(t);
++    } else {
++      err().~unexpected<E>();
++      ::new (valptr()) T(il, std::forward<Args>(args)...);
++      this->m_has_val = true;
++    }
++  }
++
++  template <class U, class... Args,
++            detail::enable_if_t<!std::is_nothrow_constructible<
++                T, std::initializer_list<U> &, Args &&...>::value> * = nullptr>
++  void emplace(std::initializer_list<U> il, Args &&...args) {
++    if (has_value()) {
++      T t(il, std::forward<Args>(args)...);
++      val() = std::move(t);
++    } else {
++      auto tmp = std::move(err());
++      err().~unexpected<E>();
++
++#ifdef Q23_TL_EXPECTED_EXCEPTIONS_ENABLED
++      try {
++        ::new (valptr()) T(il, std::forward<Args>(args)...);
++        this->m_has_val = true;
++      } catch (...) {
++        err() = std::move(tmp);
++        throw;
++      }
++#else
++      ::new (valptr()) T(il, std::forward<Args>(args)...);
++      this->m_has_val = true;
++#endif
++    }
++  }
++
++private:
++  using t_is_void = std::true_type;
++  using t_is_not_void = std::false_type;
++  using t_is_nothrow_move_constructible = std::true_type;
++  using move_constructing_t_can_throw = std::false_type;
++  using e_is_nothrow_move_constructible = std::true_type;
++  using move_constructing_e_can_throw = std::false_type;
++
++  void swap_where_both_have_value(expected & /*rhs*/, t_is_void) noexcept {
++    // swapping void is a no-op
++  }
++
++  void swap_where_both_have_value(expected &rhs, t_is_not_void) {
++    using std::swap;
++    swap(val(), rhs.val());
++  }
++
++  void swap_where_only_one_has_value(expected &rhs, t_is_void) noexcept(
++      std::is_nothrow_move_constructible<E>::value) {
++    ::new (errptr()) unexpected_type(std::move(rhs.err()));
++    rhs.err().~unexpected_type();
++    std::swap(this->m_has_val, rhs.m_has_val);
++  }
++
++  void swap_where_only_one_has_value(expected &rhs, t_is_not_void) {
++    swap_where_only_one_has_value_and_t_is_not_void(
++        rhs, typename std::is_nothrow_move_constructible<T>::type{},
++        typename std::is_nothrow_move_constructible<E>::type{});
++  }
++
++  void swap_where_only_one_has_value_and_t_is_not_void(
++      expected &rhs, t_is_nothrow_move_constructible,
++      e_is_nothrow_move_constructible) noexcept {
++    auto temp = std::move(val());
++    val().~T();
++    ::new (errptr()) unexpected_type(std::move(rhs.err()));
++    rhs.err().~unexpected_type();
++    ::new (rhs.valptr()) T(std::move(temp));
++    std::swap(this->m_has_val, rhs.m_has_val);
++  }
++
++  void swap_where_only_one_has_value_and_t_is_not_void(
++      expected &rhs, t_is_nothrow_move_constructible,
++      move_constructing_e_can_throw) {
++    auto temp = std::move(val());
++    val().~T();
++#ifdef Q23_TL_EXPECTED_EXCEPTIONS_ENABLED
++    try {
++      ::new (errptr()) unexpected_type(std::move(rhs.err()));
++      rhs.err().~unexpected_type();
++      ::new (rhs.valptr()) T(std::move(temp));
++      std::swap(this->m_has_val, rhs.m_has_val);
++    } catch (...) {
++      val() = std::move(temp);
++      throw;
++    }
++#else
++    ::new (errptr()) unexpected_type(std::move(rhs.err()));
++    rhs.err().~unexpected_type();
++    ::new (rhs.valptr()) T(std::move(temp));
++    std::swap(this->m_has_val, rhs.m_has_val);
++#endif
++  }
++
++  void swap_where_only_one_has_value_and_t_is_not_void(
++      expected &rhs, move_constructing_t_can_throw,
++      e_is_nothrow_move_constructible) {
++    auto temp = std::move(rhs.err());
++    rhs.err().~unexpected_type();
++#ifdef Q23_TL_EXPECTED_EXCEPTIONS_ENABLED
++    try {
++      ::new (rhs.valptr()) T(std::move(val()));
++      val().~T();
++      ::new (errptr()) unexpected_type(std::move(temp));
++      std::swap(this->m_has_val, rhs.m_has_val);
++    } catch (...) {
++      rhs.err() = std::move(temp);
++      throw;
++    }
++#else
++    ::new (rhs.valptr()) T(std::move(val()));
++    val().~T();
++    ::new (errptr()) unexpected_type(std::move(temp));
++    std::swap(this->m_has_val, rhs.m_has_val);
++#endif
++  }
++
++public:
++  template <class OT = T, class OE = E>
++  detail::enable_if_t<detail::is_swappable<OT>::value &&
++                      detail::is_swappable<OE>::value &&
++                      (std::is_nothrow_move_constructible<OT>::value ||
++                       std::is_nothrow_move_constructible<OE>::value)>
++  swap(expected &rhs) noexcept(
++      std::is_nothrow_move_constructible<T>::value
++          &&detail::is_nothrow_swappable<T>::value
++              &&std::is_nothrow_move_constructible<E>::value
++                  &&detail::is_nothrow_swappable<E>::value) {
++    if (has_value() && rhs.has_value()) {
++      swap_where_both_have_value(rhs, typename std::is_void<T>::type{});
++    } else if (!has_value() && rhs.has_value()) {
++      rhs.swap(*this);
++    } else if (has_value()) {
++      swap_where_only_one_has_value(rhs, typename std::is_void<T>::type{});
++    } else {
++      using std::swap;
++      swap(err(), rhs.err());
++    }
++  }
++
++  constexpr const T *operator->() const {
++    Q23_TL_ASSERT(has_value());
++    return valptr();
++  }
++  Q23_TL_EXPECTED_11_CONSTEXPR T *operator->() {
++    Q23_TL_ASSERT(has_value());
++    return valptr();
++  }
++
++  template <class U = T,
++            detail::enable_if_t<!std::is_void<U>::value> * = nullptr>
++  constexpr const U &operator*() const & {
++    Q23_TL_ASSERT(has_value());
++    return val();
++  }
++  template <class U = T,
++            detail::enable_if_t<!std::is_void<U>::value> * = nullptr>
++  Q23_TL_EXPECTED_11_CONSTEXPR U &operator*() & {
++    Q23_TL_ASSERT(has_value());
++    return val();
++  }
++  template <class U = T,
++            detail::enable_if_t<!std::is_void<U>::value> * = nullptr>
++  constexpr const U &&operator*() const && {
++    Q23_TL_ASSERT(has_value());
++    return std::move(val());
++  }
++  template <class U = T,
++            detail::enable_if_t<!std::is_void<U>::value> * = nullptr>
++  Q23_TL_EXPECTED_11_CONSTEXPR U &&operator*() && {
++    Q23_TL_ASSERT(has_value());
++    return std::move(val());
++  }
++
++  constexpr bool has_value() const noexcept { return this->m_has_val; }
++  constexpr explicit operator bool() const noexcept { return this->m_has_val; }
++
++  template <class U = T,
++            detail::enable_if_t<!std::is_void<U>::value> * = nullptr>
++  Q23_TL_EXPECTED_11_CONSTEXPR const U &value() const & {
++    if (!has_value())
++      detail::throw_exception(bad_expected_access<E>(err().error()));
++    return val();
++  }
++  template <class U = T,
++            detail::enable_if_t<!std::is_void<U>::value> * = nullptr>
++  Q23_TL_EXPECTED_11_CONSTEXPR U &value() & {
++    if (!has_value())
++      detail::throw_exception(bad_expected_access<E>(err().error()));
++    return val();
++  }
++  template <class U = T,
++            detail::enable_if_t<!std::is_void<U>::value> * = nullptr>
++  Q23_TL_EXPECTED_11_CONSTEXPR const U &&value() const && {
++    if (!has_value())
++      detail::throw_exception(bad_expected_access<E>(std::move(err()).error()));
++    return std::move(val());
++  }
++  template <class U = T,
++            detail::enable_if_t<!std::is_void<U>::value> * = nullptr>
++  Q23_TL_EXPECTED_11_CONSTEXPR U &&value() && {
++    if (!has_value())
++      detail::throw_exception(bad_expected_access<E>(std::move(err()).error()));
++    return std::move(val());
++  }
++
++  constexpr const E &error() const & {
++    Q23_TL_ASSERT(!has_value());
++    return err().error();
++  }
++  Q23_TL_EXPECTED_11_CONSTEXPR E &error() & {
++    Q23_TL_ASSERT(!has_value());
++    return err().error();
++  }
++  constexpr const E &&error() const && {
++    Q23_TL_ASSERT(!has_value());
++    return std::move(err().error());
++  }
++  Q23_TL_EXPECTED_11_CONSTEXPR E &&error() && {
++    Q23_TL_ASSERT(!has_value());
++    return std::move(err().error());
++  }
++
++  template <class U> constexpr T value_or(U &&v) const & {
++    static_assert(std::is_copy_constructible<T>::value &&
++                      std::is_convertible<U &&, T>::value,
++                  "T must be copy-constructible and convertible to from U&&");
++    return bool(*this) ? **this : static_cast<T>(std::forward<U>(v));
++  }
++  template <class U> Q23_TL_EXPECTED_11_CONSTEXPR T value_or(U &&v) && {
++    static_assert(std::is_move_constructible<T>::value &&
++                      std::is_convertible<U &&, T>::value,
++                  "T must be move-constructible and convertible to from U&&");
++    return bool(*this) ? std::move(**this) : static_cast<T>(std::forward<U>(v));
++  }
++};
++
++namespace detail {
++template <class Exp> using exp_t = typename detail::decay_t<Exp>::value_type;
++template <class Exp> using err_t = typename detail::decay_t<Exp>::error_type;
++template <class Exp, class Ret> using ret_t = expected<Ret, err_t<Exp>>;
++
++#ifdef Q23_TL_EXPECTED_CXX14
++template <class Exp, class F,
++          detail::enable_if_t<!std::is_void<exp_t<Exp>>::value> * = nullptr,
++          class Ret = decltype(detail::invoke(std::declval<F>(),
++                                              *std::declval<Exp>()))>
++constexpr auto and_then_impl(Exp &&exp, F &&f) {
++  static_assert(detail::is_expected<Ret>::value, "F must return an expected");
++
++  return exp.has_value()
++             ? detail::invoke(std::forward<F>(f), *std::forward<Exp>(exp))
++             : Ret(unexpect, std::forward<Exp>(exp).error());
++}
++
++template <class Exp, class F,
++          detail::enable_if_t<std::is_void<exp_t<Exp>>::value> * = nullptr,
++          class Ret = decltype(detail::invoke(std::declval<F>()))>
++constexpr auto and_then_impl(Exp &&exp, F &&f) {
++  static_assert(detail::is_expected<Ret>::value, "F must return an expected");
++
++  return exp.has_value() ? detail::invoke(std::forward<F>(f))
++                         : Ret(unexpect, std::forward<Exp>(exp).error());
++}
++#else
++template <class> struct TC;
++template <class Exp, class F,
++          class Ret = decltype(detail::invoke(std::declval<F>(),
++                                              *std::declval<Exp>())),
++          detail::enable_if_t<!std::is_void<exp_t<Exp>>::value> * = nullptr>
++auto and_then_impl(Exp &&exp, F &&f) -> Ret {
++  static_assert(detail::is_expected<Ret>::value, "F must return an expected");
++
++  return exp.has_value()
++             ? detail::invoke(std::forward<F>(f), *std::forward<Exp>(exp))
++             : Ret(unexpect, std::forward<Exp>(exp).error());
++}
++
++template <class Exp, class F,
++          class Ret = decltype(detail::invoke(std::declval<F>())),
++          detail::enable_if_t<std::is_void<exp_t<Exp>>::value> * = nullptr>
++constexpr auto and_then_impl(Exp &&exp, F &&f) -> Ret {
++  static_assert(detail::is_expected<Ret>::value, "F must return an expected");
++
++  return exp.has_value() ? detail::invoke(std::forward<F>(f))
++                         : Ret(unexpect, std::forward<Exp>(exp).error());
++}
++#endif
++
++#ifdef Q23_TL_EXPECTED_CXX14
++template <class Exp, class F,
++          detail::enable_if_t<!std::is_void<exp_t<Exp>>::value> * = nullptr,
++          class Ret = decltype(detail::invoke(std::declval<F>(),
++                                              *std::declval<Exp>())),
++          detail::enable_if_t<!std::is_void<Ret>::value> * = nullptr>
++constexpr auto expected_map_impl(Exp &&exp, F &&f) {
++  using result = ret_t<Exp, detail::decay_t<Ret>>;
++  return exp.has_value() ? result(detail::invoke(std::forward<F>(f),
++                                                 *std::forward<Exp>(exp)))
++                         : result(unexpect, std::forward<Exp>(exp).error());
++}
++
++template <class Exp, class F,
++          detail::enable_if_t<!std::is_void<exp_t<Exp>>::value> * = nullptr,
++          class Ret = decltype(detail::invoke(std::declval<F>(),
++                                              *std::declval<Exp>())),
++          detail::enable_if_t<std::is_void<Ret>::value> * = nullptr>
++auto expected_map_impl(Exp &&exp, F &&f) {
++  using result = expected<void, err_t<Exp>>;
++  if (exp.has_value()) {
++    detail::invoke(std::forward<F>(f), *std::forward<Exp>(exp));
++    return result();
++  }
++
++  return result(unexpect, std::forward<Exp>(exp).error());
++}
++
++template <class Exp, class F,
++          detail::enable_if_t<std::is_void<exp_t<Exp>>::value> * = nullptr,
++          class Ret = decltype(detail::invoke(std::declval<F>())),
++          detail::enable_if_t<!std::is_void<Ret>::value> * = nullptr>
++constexpr auto expected_map_impl(Exp &&exp, F &&f) {
++  using result = ret_t<Exp, detail::decay_t<Ret>>;
++  return exp.has_value() ? result(detail::invoke(std::forward<F>(f)))
++                         : result(unexpect, std::forward<Exp>(exp).error());
++}
++
++template <class Exp, class F,
++          detail::enable_if_t<std::is_void<exp_t<Exp>>::value> * = nullptr,
++          class Ret = decltype(detail::invoke(std::declval<F>())),
++          detail::enable_if_t<std::is_void<Ret>::value> * = nullptr>
++auto expected_map_impl(Exp &&exp, F &&f) {
++  using result = expected<void, err_t<Exp>>;
++  if (exp.has_value()) {
++    detail::invoke(std::forward<F>(f));
++    return result();
++  }
++
++  return result(unexpect, std::forward<Exp>(exp).error());
++}
++#else
++template <class Exp, class F,
++          detail::enable_if_t<!std::is_void<exp_t<Exp>>::value> * = nullptr,
++          class Ret = decltype(detail::invoke(std::declval<F>(),
++                                              *std::declval<Exp>())),
++          detail::enable_if_t<!std::is_void<Ret>::value> * = nullptr>
++
++constexpr auto expected_map_impl(Exp &&exp, F &&f)
++    -> ret_t<Exp, detail::decay_t<Ret>> {
++  using result = ret_t<Exp, detail::decay_t<Ret>>;
++
++  return exp.has_value() ? result(detail::invoke(std::forward<F>(f),
++                                                 *std::forward<Exp>(exp)))
++                         : result(unexpect, std::forward<Exp>(exp).error());
++}
++
++template <class Exp, class F,
++          detail::enable_if_t<!std::is_void<exp_t<Exp>>::value> * = nullptr,
++          class Ret = decltype(detail::invoke(std::declval<F>(),
++                                              *std::declval<Exp>())),
++          detail::enable_if_t<std::is_void<Ret>::value> * = nullptr>
++
++auto expected_map_impl(Exp &&exp, F &&f) -> expected<void, err_t<Exp>> {
++  if (exp.has_value()) {
++    detail::invoke(std::forward<F>(f), *std::forward<Exp>(exp));
++    return {};
++  }
++
++  return unexpected<err_t<Exp>>(std::forward<Exp>(exp).error());
++}
++
++template <class Exp, class F,
++          detail::enable_if_t<std::is_void<exp_t<Exp>>::value> * = nullptr,
++          class Ret = decltype(detail::invoke(std::declval<F>())),
++          detail::enable_if_t<!std::is_void<Ret>::value> * = nullptr>
++
++constexpr auto expected_map_impl(Exp &&exp, F &&f)
++    -> ret_t<Exp, detail::decay_t<Ret>> {
++  using result = ret_t<Exp, detail::decay_t<Ret>>;
++
++  return exp.has_value() ? result(detail::invoke(std::forward<F>(f)))
++                         : result(unexpect, std::forward<Exp>(exp).error());
++}
++
++template <class Exp, class F,
++          detail::enable_if_t<std::is_void<exp_t<Exp>>::value> * = nullptr,
++          class Ret = decltype(detail::invoke(std::declval<F>())),
++          detail::enable_if_t<std::is_void<Ret>::value> * = nullptr>
++
++auto expected_map_impl(Exp &&exp, F &&f) -> expected<void, err_t<Exp>> {
++  if (exp.has_value()) {
++    detail::invoke(std::forward<F>(f));
++    return {};
++  }
++
++  return unexpected<err_t<Exp>>(std::forward<Exp>(exp).error());
++}
++#endif
++
++#if defined(Q23_TL_EXPECTED_CXX14) && !defined(Q23_TL_EXPECTED_GCC49) &&               \
++    !defined(Q23_TL_EXPECTED_GCC54) && !defined(Q23_TL_EXPECTED_GCC55)
++template <class Exp, class F,
++          detail::enable_if_t<!std::is_void<exp_t<Exp>>::value> * = nullptr,
++          class Ret = decltype(detail::invoke(std::declval<F>(),
++                                              std::declval<Exp>().error())),
++          detail::enable_if_t<!std::is_void<Ret>::value> * = nullptr>
++constexpr auto map_error_impl(Exp &&exp, F &&f) {
++  using result = expected<exp_t<Exp>, detail::decay_t<Ret>>;
++  return exp.has_value()
++             ? result(*std::forward<Exp>(exp))
++             : result(unexpect, detail::invoke(std::forward<F>(f),
++                                               std::forward<Exp>(exp).error()));
++}
++template <class Exp, class F,
++          detail::enable_if_t<!std::is_void<exp_t<Exp>>::value> * = nullptr,
++          class Ret = decltype(detail::invoke(std::declval<F>(),
++                                              std::declval<Exp>().error())),
++          detail::enable_if_t<std::is_void<Ret>::value> * = nullptr>
++auto map_error_impl(Exp &&exp, F &&f) {
++  using result = expected<exp_t<Exp>, monostate>;
++  if (exp.has_value()) {
++    return result(*std::forward<Exp>(exp));
++  }
++
++  detail::invoke(std::forward<F>(f), std::forward<Exp>(exp).error());
++  return result(unexpect, monostate{});
++}
++template <class Exp, class F,
++          detail::enable_if_t<std::is_void<exp_t<Exp>>::value> * = nullptr,
++          class Ret = decltype(detail::invoke(std::declval<F>(),
++                                              std::declval<Exp>().error())),
++          detail::enable_if_t<!std::is_void<Ret>::value> * = nullptr>
++constexpr auto map_error_impl(Exp &&exp, F &&f) {
++  using result = expected<exp_t<Exp>, detail::decay_t<Ret>>;
++  return exp.has_value()
++             ? result()
++             : result(unexpect, detail::invoke(std::forward<F>(f),
++                                               std::forward<Exp>(exp).error()));
++}
++template <class Exp, class F,
++          detail::enable_if_t<std::is_void<exp_t<Exp>>::value> * = nullptr,
++          class Ret = decltype(detail::invoke(std::declval<F>(),
++                                              std::declval<Exp>().error())),
++          detail::enable_if_t<std::is_void<Ret>::value> * = nullptr>
++auto map_error_impl(Exp &&exp, F &&f) {
++  using result = expected<exp_t<Exp>, monostate>;
++  if (exp.has_value()) {
++    return result();
++  }
++
++  detail::invoke(std::forward<F>(f), std::forward<Exp>(exp).error());
++  return result(unexpect, monostate{});
++}
++#else
++template <class Exp, class F,
++          detail::enable_if_t<!std::is_void<exp_t<Exp>>::value> * = nullptr,
++          class Ret = decltype(detail::invoke(std::declval<F>(),
++                                              std::declval<Exp>().error())),
++          detail::enable_if_t<!std::is_void<Ret>::value> * = nullptr>
++constexpr auto map_error_impl(Exp &&exp, F &&f)
++    -> expected<exp_t<Exp>, detail::decay_t<Ret>> {
++  using result = expected<exp_t<Exp>, detail::decay_t<Ret>>;
++
++  return exp.has_value()
++             ? result(*std::forward<Exp>(exp))
++             : result(unexpect, detail::invoke(std::forward<F>(f),
++                                               std::forward<Exp>(exp).error()));
++}
++
++template <class Exp, class F,
++          detail::enable_if_t<!std::is_void<exp_t<Exp>>::value> * = nullptr,
++          class Ret = decltype(detail::invoke(std::declval<F>(),
++                                              std::declval<Exp>().error())),
++          detail::enable_if_t<std::is_void<Ret>::value> * = nullptr>
++auto map_error_impl(Exp &&exp, F &&f) -> expected<exp_t<Exp>, monostate> {
++  using result = expected<exp_t<Exp>, monostate>;
++  if (exp.has_value()) {
++    return result(*std::forward<Exp>(exp));
++  }
++
++  detail::invoke(std::forward<F>(f), std::forward<Exp>(exp).error());
++  return result(unexpect, monostate{});
++}
++
++template <class Exp, class F,
++          detail::enable_if_t<std::is_void<exp_t<Exp>>::value> * = nullptr,
++          class Ret = decltype(detail::invoke(std::declval<F>(),
++                                              std::declval<Exp>().error())),
++          detail::enable_if_t<!std::is_void<Ret>::value> * = nullptr>
++constexpr auto map_error_impl(Exp &&exp, F &&f)
++    -> expected<exp_t<Exp>, detail::decay_t<Ret>> {
++  using result = expected<exp_t<Exp>, detail::decay_t<Ret>>;
++
++  return exp.has_value()
++             ? result()
++             : result(unexpect, detail::invoke(std::forward<F>(f),
++                                               std::forward<Exp>(exp).error()));
++}
++
++template <class Exp, class F,
++          detail::enable_if_t<std::is_void<exp_t<Exp>>::value> * = nullptr,
++          class Ret = decltype(detail::invoke(std::declval<F>(),
++                                              std::declval<Exp>().error())),
++          detail::enable_if_t<std::is_void<Ret>::value> * = nullptr>
++auto map_error_impl(Exp &&exp, F &&f) -> expected<exp_t<Exp>, monostate> {
++  using result = expected<exp_t<Exp>, monostate>;
++  if (exp.has_value()) {
++    return result();
++  }
++
++  detail::invoke(std::forward<F>(f), std::forward<Exp>(exp).error());
++  return result(unexpect, monostate{});
++}
++#endif
++
++#ifdef Q23_TL_EXPECTED_CXX14
++template <class Exp, class F,
++          class Ret = decltype(detail::invoke(std::declval<F>(),
++                                              std::declval<Exp>().error())),
++          detail::enable_if_t<!std::is_void<Ret>::value> * = nullptr>
++constexpr auto or_else_impl(Exp &&exp, F &&f) {
++  static_assert(detail::is_expected<Ret>::value, "F must return an expected");
++  return exp.has_value() ? std::forward<Exp>(exp)
++                         : detail::invoke(std::forward<F>(f),
++                                          std::forward<Exp>(exp).error());
++}
++
++template <class Exp, class F,
++          class Ret = decltype(detail::invoke(std::declval<F>(),
++                                              std::declval<Exp>().error())),
++          detail::enable_if_t<std::is_void<Ret>::value> * = nullptr>
++detail::decay_t<Exp> or_else_impl(Exp &&exp, F &&f) {
++  return exp.has_value() ? std::forward<Exp>(exp)
++                         : (detail::invoke(std::forward<F>(f),
++                                           std::forward<Exp>(exp).error()),
++                            std::forward<Exp>(exp));
++}
++#else
++template <class Exp, class F,
++          class Ret = decltype(detail::invoke(std::declval<F>(),
++                                              std::declval<Exp>().error())),
++          detail::enable_if_t<!std::is_void<Ret>::value> * = nullptr>
++auto or_else_impl(Exp &&exp, F &&f) -> Ret {
++  static_assert(detail::is_expected<Ret>::value, "F must return an expected");
++  return exp.has_value() ? std::forward<Exp>(exp)
++                         : detail::invoke(std::forward<F>(f),
++                                          std::forward<Exp>(exp).error());
++}
++
++template <class Exp, class F,
++          class Ret = decltype(detail::invoke(std::declval<F>(),
++                                              std::declval<Exp>().error())),
++          detail::enable_if_t<std::is_void<Ret>::value> * = nullptr>
++detail::decay_t<Exp> or_else_impl(Exp &&exp, F &&f) {
++  return exp.has_value() ? std::forward<Exp>(exp)
++                         : (detail::invoke(std::forward<F>(f),
++                                           std::forward<Exp>(exp).error()),
++                            std::forward<Exp>(exp));
++}
++#endif
++} // namespace detail
++
++template <class T, class E, class U, class F>
++constexpr bool operator==(const expected<T, E> &lhs,
++                          const expected<U, F> &rhs) {
++  return (lhs.has_value() != rhs.has_value())
++             ? false
++             : (!lhs.has_value() ? lhs.error() == rhs.error() : *lhs == *rhs);
++}
++template <class T, class E, class U, class F>
++constexpr bool operator!=(const expected<T, E> &lhs,
++                          const expected<U, F> &rhs) {
++  return (lhs.has_value() != rhs.has_value())
++             ? true
++             : (!lhs.has_value() ? lhs.error() != rhs.error() : *lhs != *rhs);
++}
++template <class E, class F>
++constexpr bool operator==(const expected<void, E> &lhs,
++                          const expected<void, F> &rhs) {
++  return (lhs.has_value() != rhs.has_value())
++             ? false
++             : (!lhs.has_value() ? lhs.error() == rhs.error() : true);
++}
++template <class E, class F>
++constexpr bool operator!=(const expected<void, E> &lhs,
++                          const expected<void, F> &rhs) {
++  return (lhs.has_value() != rhs.has_value())
++             ? true
++             : (!lhs.has_value() ? lhs.error() != rhs.error() : false);
++}
++
++template <class T, class E, class U>
++constexpr bool operator==(const expected<T, E> &x, const U &v) {
++  return x.has_value() ? *x == v : false;
++}
++template <class T, class E, class U>
++constexpr bool operator==(const U &v, const expected<T, E> &x) {
++  return x.has_value() ? *x == v : false;
++}
++template <class T, class E, class U>
++constexpr bool operator!=(const expected<T, E> &x, const U &v) {
++  return x.has_value() ? *x != v : true;
++}
++template <class T, class E, class U>
++constexpr bool operator!=(const U &v, const expected<T, E> &x) {
++  return x.has_value() ? *x != v : true;
++}
++
++template <class T, class E>
++constexpr bool operator==(const expected<T, E> &x, const unexpected<E> &e) {
++  return x.has_value() ? false : x.error() == e.error();
++}
++template <class T, class E>
++constexpr bool operator==(const unexpected<E> &e, const expected<T, E> &x) {
++  return x.has_value() ? false : x.error() == e.error();
++}
++template <class T, class E>
++constexpr bool operator!=(const expected<T, E> &x, const unexpected<E> &e) {
++  return x.has_value() ? true : x.error() != e.error();
++}
++template <class T, class E>
++constexpr bool operator!=(const unexpected<E> &e, const expected<T, E> &x) {
++  return x.has_value() ? true : x.error() != e.error();
++}
++
++template <class T, class E,
++          detail::enable_if_t<(std::is_void<T>::value ||
++                               std::is_move_constructible<T>::value) &&
++                              detail::is_swappable<T>::value &&
++                              std::is_move_constructible<E>::value &&
++                              detail::is_swappable<E>::value> * = nullptr>
++void swap(expected<T, E> &lhs,
++          expected<T, E> &rhs) noexcept(noexcept(lhs.swap(rhs))) {
++  lhs.swap(rhs);
++}
++} // namespace q23
++QT_END_NAMESPACE
++
++#endif
+diff --git a/src/gui/kernel/qevent.h b/src/gui/kernel/qevent.h
+index 2374e527e3e..2aa7de1e245 100644
+--- a/src/gui/kernel/qevent.h
++++ b/src/gui/kernel/qevent.h
+@@ -633,7 +633,8 @@ public:
+        Cursor,
+        Language,
+        Ruby,
+-       Selection
++       Selection,
++       MimeData
+     };
+     class Attribute {
+     public:
+diff --git a/src/gui/text/qinputcontrol.cpp b/src/gui/text/qinputcontrol.cpp
+index 4edd46ff0e7..9420250cb7e 100644
+--- a/src/gui/text/qinputcontrol.cpp
++++ b/src/gui/text/qinputcontrol.cpp
+@@ -3,6 +3,9 @@
+ 
+ #include "qinputcontrol_p.h"
+ #include <QtGui/qevent.h>
++#include <QtCore/qmimedata.h>
++
++#include <algorithm>
+ 
+ QT_BEGIN_NAMESPACE
+ 
+@@ -103,6 +106,40 @@ bool QInputControl::isCommonTextEditShortcut(const QKeyEvent *ke)
+     return false;
+ }
+ 
++/*!
++    \internal
++
++    Creates a wrapper for returning QMimeData in response to
++    Qt::ImCurrentSelection, while being backwards compatible
++    with clients who only read the plain text string.
++*/
++QVariant QInputControl::selectionWrapper(QMimeData *mimeData)
++{
++    struct MimeDataSelection
++    {
++        QMimeData *mimeData = nullptr;
++        operator QMimeData*() const { return mimeData; }
++        operator QString() const { return mimeData->text(); }
++    };
++
++    static bool registeredConversions = []{
++        return QMetaType::registerConverter<MimeDataSelection, QMimeData*>()
++            && QMetaType::registerConverter<MimeDataSelection, QString>();
++    }();
++    Q_ASSERT(registeredConversions);
++    return QVariant::fromValue(MimeDataSelection{mimeData});
++}
++
++QMimeData *QInputControl::mimeDataForInputEvent(QInputMethodEvent *event)
++{
++    const auto &attributes = event->attributes();
++    auto mimeDataAttr = std::find_if(attributes.begin(), attributes.end(),
++        [](auto a) { return a.type == QInputMethodEvent::MimeData; });
++    return mimeDataAttr != event->attributes().end()
++        ? mimeDataAttr->value.value<QMimeData*>()
++        : nullptr;
++}
++
+ QT_END_NAMESPACE
+ 
+ #include "moc_qinputcontrol_p.cpp"
+diff --git a/src/gui/text/qinputcontrol_p.h b/src/gui/text/qinputcontrol_p.h
+index fec73e1987b..f2cad08f81b 100644
+--- a/src/gui/text/qinputcontrol_p.h
++++ b/src/gui/text/qinputcontrol_p.h
+@@ -16,12 +16,15 @@
+ //
+ 
+ #include <QtCore/qobject.h>
++#include <QtCore/qvariant.h>
+ #include <qtguiglobal.h>
+ #include <private/qglobal_p.h>
+ 
+ QT_BEGIN_NAMESPACE
+ 
+ class QKeyEvent;
++class QMimeData;
++class QInputMethodEvent;
+ class Q_GUI_EXPORT QInputControl : public QObject
+ {
+     Q_OBJECT
+@@ -35,6 +38,8 @@ public:
+ 
+     bool isAcceptableInput(const QKeyEvent *event) const;
+     static bool isCommonTextEditShortcut(const QKeyEvent *ke);
++    static QVariant selectionWrapper(QMimeData *mimeData);
++    static QMimeData *mimeDataForInputEvent(QInputMethodEvent *event);
+ 
+ protected:
+     explicit QInputControl(Type type, QObjectPrivate &dd, QObject *parent = nullptr);
+diff --git a/src/plugins/platforms/CMakeLists.txt b/src/plugins/platforms/CMakeLists.txt
+index 69071a22c24..300a39f1253 100644
+--- a/src/plugins/platforms/CMakeLists.txt
++++ b/src/plugins/platforms/CMakeLists.txt
+@@ -41,6 +41,9 @@ endif()
+ if(QT_FEATURE_vnc AND TARGET Qt::Network)
+     add_subdirectory(vnc)
+ endif()
++if(COSMOPOLITAN)
++    add_subdirectory(cosmonative)
++endif()
+ if(FREEBSD)
+     # add_subdirectory(bsdfb) # TODO: QTBUG-112768
+ endif()
+diff --git a/src/plugins/platforms/cosmonative/CMakeLists.txt b/src/plugins/platforms/cosmonative/CMakeLists.txt
+new file mode 100644
+index 00000000000..a2674a7fd9e
+--- /dev/null
++++ b/src/plugins/platforms/cosmonative/CMakeLists.txt
+@@ -0,0 +1,30 @@
++# Copyright (C) 2026
++# SPDX-License-Identifier: BSD-3-Clause
++
++#####################################################################
++## QCosmoNativeIntegrationPlugin Plugin:
++#####################################################################
++
++qt_internal_add_plugin(QCosmoNativeIntegrationPlugin
++    OUTPUT_NAME qcosmonative
++    PLUGIN_TYPE platforms
++    DEFAULT_IF "cosmonative" IN_LIST QT_QPA_PLATFORMS
++    SOURCES
++        main.cpp
++        qcosmonativehost.cpp qcosmonativehost.h
++        qcosmonativeintegration.cpp qcosmonativeintegration.h
++        qcosmonativescreen.cpp qcosmonativescreen.h
++    DEFINES
++        QT_NO_FOREACH
++    LIBRARIES
++        Qt::Core
++        Qt::CorePrivate
++        Qt::FbSupportPrivate
++        Qt::Gui
++        Qt::GuiPrivate
++)
++
++qt_internal_extend_target(QCosmoNativeIntegrationPlugin CONDITION TARGET Qt::InputSupportPrivate
++    LIBRARIES
++        Qt::InputSupportPrivate
++)
+diff --git a/src/plugins/platforms/cosmonative/cosmonative.json b/src/plugins/platforms/cosmonative/cosmonative.json
+new file mode 100644
+index 00000000000..3bfdabd720e
+--- /dev/null
++++ b/src/plugins/platforms/cosmonative/cosmonative.json
+@@ -0,0 +1,3 @@
++{
++    "Keys": [ "cosmonative" ]
++}
+diff --git a/src/plugins/platforms/cosmonative/main.cpp b/src/plugins/platforms/cosmonative/main.cpp
+new file mode 100644
+index 00000000000..a6d92d2d8a9
+--- /dev/null
++++ b/src/plugins/platforms/cosmonative/main.cpp
+@@ -0,0 +1,32 @@
++// Copyright (C) 2026
++// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
++
++#include "qcosmonativeintegration.h"
++
++#include <qpa/qplatformintegrationplugin.h>
++
++QT_BEGIN_NAMESPACE
++
++using namespace Qt::StringLiterals;
++
++class QCosmoNativeIntegrationPlugin : public QPlatformIntegrationPlugin
++{
++    Q_OBJECT
++    Q_PLUGIN_METADATA(IID QPlatformIntegrationFactoryInterface_iid FILE "cosmonative.json")
++
++public:
++    QPlatformIntegration *create(const QString &system, const QStringList &paramList) override;
++};
++
++QPlatformIntegration *QCosmoNativeIntegrationPlugin::create(const QString &system,
++                                                           const QStringList &paramList)
++{
++    if (!system.compare("cosmonative"_L1, Qt::CaseInsensitive))
++        return new QCosmoNativeIntegration(paramList);
++
++    return nullptr;
++}
++
++QT_END_NAMESPACE
++
++#include "main.moc"
+diff --git a/src/plugins/platforms/cosmonative/qcosmonativehost.cpp b/src/plugins/platforms/cosmonative/qcosmonativehost.cpp
+new file mode 100644
+index 00000000000..1c2bc138062
+--- /dev/null
++++ b/src/plugins/platforms/cosmonative/qcosmonativehost.cpp
+@@ -0,0 +1,1462 @@
++// Copyright (C) 2026
++// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
++
++#include "qcosmonativehost.h"
++
++#include <QtCore/QCoreApplication>
++#include <QtCore/QDebug>
++#include <QtCore/QVarLengthArray>
++
++#include <algorithm>
++#include <deque>
++#include <string.h>
++#include <unistd.h>
++
++extern "C" {
++#include <dlfcn.h>
++#include <libc/dce.h>
++#include <libc/nt/dll.h>
++#include <libc/nt/enum/cs.h>
++#include <libc/nt/enum/cw.h>
++#include <libc/nt/enum/sw.h>
++#include <libc/nt/enum/wm.h>
++#include <libc/nt/enum/ws.h>
++#include <libc/nt/events.h>
++#include <libc/nt/paint.h>
++#include <libc/nt/struct/msg.h>
++#include <libc/nt/struct/paintstruct.h>
++#include <libc/nt/windows.h>
++}
++
++QT_BEGIN_NAMESPACE
++
++namespace {
++
++using namespace Qt::StringLiterals;
++
++template <typename T>
++static T cosmoLoadFunction(void *handle, const char *name)
++{
++    void *symbol = cosmo_dlsym(handle, name);
++    if (!symbol)
++        return nullptr;
++    return reinterpret_cast<T>(cosmo_dltramp(symbol));
++}
++
++static QString lastCosmoDlError(const char *prefix)
++{
++    const char *error = cosmo_dlerror();
++    return QString::fromLatin1("%1: %2").arg(QString::fromLatin1(prefix),
++                                             QString::fromLatin1(error ? error : "unknown"));
++}
++
++static int qtKeyFromLatin1(const QString &text)
++{
++    if (text.size() != 1)
++        return Qt::Key_unknown;
++
++    const QChar ch = text.at(0);
++    if (ch >= u'a' && ch <= u'z')
++        return Qt::Key_A + ch.unicode() - u'a';
++    if (ch >= u'A' && ch <= u'Z')
++        return Qt::Key_A + ch.unicode() - u'A';
++    if (ch >= u'0' && ch <= u'9')
++        return Qt::Key_0 + ch.unicode() - u'0';
++    if (ch == u' ')
++        return Qt::Key_Space;
++    return ch.unicode();
++}
++
++// -------------------------------------------------------------------------
++// macOS/AppKit host. This intentionally avoids all Apple SDK headers so it can
++// be built inside Cosmopolitan's libc namespace.
++
++typedef struct objc_object *ObjcId;
++typedef struct objc_class *ObjcClass;
++typedef struct objc_selector *ObjcSel;
++
++struct NSPoint {
++    double x;
++    double y;
++};
++
++struct NSSize {
++    double width;
++    double height;
++};
++
++struct NSRect {
++    NSPoint origin;
++    NSSize size;
++};
++
++class QCosmoNativeMacHost final : public QCosmoNativeHost
++{
++public:
++    bool initialize(const QSize &size, const QString &title) override;
++    void shutdown() override;
++    void pumpEvents(QCosmoNativeEventSink *sink) override;
++    void blit(const QImage &image, const QRegion &region) override;
++    QString errorString() const override { return m_error; }
++
++private:
++    template <typename T>
++    T loadObjc(const char *name)
++    {
++        void *symbol = cosmo_dlsym(m_objc, name);
++        if (!symbol) {
++            m_error = lastCosmoDlError(name);
++            return nullptr;
++        }
++        return reinterpret_cast<T>(cosmo_dltramp(symbol));
++    }
++
++    ObjcClass cls(const char *name) const { return m_objcGetClass(name); }
++    ObjcSel sel(const char *name) const { return m_selRegisterName(name); }
++    ObjcId string(const char *value) const;
++
++    ObjcId msgId(ObjcId receiver, const char *selector) const;
++    ObjcId msgIdId(ObjcId receiver, const char *selector, ObjcId arg) const;
++    ObjcId msgIdBool(ObjcId receiver, const char *selector, bool arg) const;
++    ObjcId msgIdInteger(ObjcId receiver, const char *selector, long arg) const;
++    ObjcId msgIdUnsignedLongLongId(ObjcId receiver, const char *selector, unsigned long long arg,
++                                   ObjcId idArg) const;
++    ObjcId msgIdRect(ObjcId receiver, const char *selector, NSRect rect) const;
++    ObjcId msgIdRectIntegerIntegerBool(ObjcId receiver, const char *selector, NSRect rect,
++                                       unsigned long style, unsigned long backing,
++                                       bool defer) const;
++    ObjcId msgIdSize(ObjcId receiver, const char *selector, NSSize size) const;
++    ObjcId msgBitmapRep(ObjcId receiver, unsigned char **planes, int width, int height,
++                        int bytesPerLine) const;
++    ObjcId nextEvent() const;
++
++    void msgVoid(ObjcId receiver, const char *selector) const;
++    void msgVoidId(ObjcId receiver, const char *selector, ObjcId arg) const;
++    void msgVoidBool(ObjcId receiver, const char *selector, bool arg) const;
++    void msgVoidInteger(ObjcId receiver, const char *selector, long arg) const;
++    long msgLong(ObjcId receiver, const char *selector) const;
++    bool msgBool(ObjcId receiver, const char *selector) const;
++    double msgDouble(ObjcId receiver, const char *selector) const;
++    unsigned short msgUShort(ObjcId receiver, const char *selector) const;
++    unsigned long msgULong(ObjcId receiver, const char *selector) const;
++    const char *msgUtf8String(ObjcId receiver, const char *selector) const;
++    NSPoint msgPoint(ObjcId receiver, const char *selector) const;
++
++    bool recreateImageView(const QImage &image);
++    void beginLatencyCriticalActivity();
++    void endLatencyCriticalActivity();
++    void translateEvent(ObjcId event, QCosmoNativeEventSink *sink);
++    QString eventText(ObjcId event) const;
++    QString pasteboardText() const;
++    int qtKeyForEvent(ObjcId event, const QString &text) const;
++    Qt::KeyboardModifiers qtModifiersForEvent(ObjcId event) const;
++    QPointF qtMousePosition(ObjcId event) const;
++
++    void *m_objc = nullptr;
++    void *m_appKit = nullptr;
++    ObjcClass (*m_objcGetClass)(const char *) = nullptr;
++    ObjcSel (*m_selRegisterName)(const char *) = nullptr;
++    void *m_msgSend = nullptr;
++    ObjcId m_pool = nullptr;
++    ObjcId m_app = nullptr;
++    ObjcId m_window = nullptr;
++    ObjcId m_imageView = nullptr;
++    ObjcId m_image = nullptr;
++    ObjcId m_bitmapRep = nullptr;
++    ObjcId m_processInfoActivity = nullptr;
++    QSize m_size;
++    const uchar *m_imageBits = nullptr;
++    int m_bytesPerLine = 0;
++    Qt::MouseButtons m_buttons = Qt::NoButton;
++    QString m_error;
++};
++
++bool QCosmoNativeMacHost::initialize(const QSize &size, const QString &title)
++{
++    m_objc = cosmo_dlopen("/usr/lib/libobjc.A.dylib", RTLD_NOW | RTLD_GLOBAL);
++    if (!m_objc) {
++        m_error = lastCosmoDlError("libobjc");
++        return false;
++    }
++
++    m_appKit = cosmo_dlopen("/System/Library/Frameworks/AppKit.framework/AppKit",
++                            RTLD_NOW | RTLD_GLOBAL);
++    if (!m_appKit) {
++        m_error = lastCosmoDlError("AppKit");
++        return false;
++    }
++
++    m_objcGetClass = loadObjc<ObjcClass (*)(const char *)>("objc_getClass");
++    m_selRegisterName = loadObjc<ObjcSel (*)(const char *)>("sel_registerName");
++    m_msgSend = loadObjc<void *>("objc_msgSend");
++    if (!m_objcGetClass || !m_selRegisterName || !m_msgSend)
++        return false;
++
++    ObjcClass poolClass = cls("NSAutoreleasePool");
++    ObjcClass appClass = cls("NSApplication");
++    ObjcClass windowClass = cls("NSWindow");
++    if (!poolClass || !appClass || !windowClass) {
++        m_error = "AppKit classes are unavailable"_L1;
++        return false;
++    }
++
++    m_pool = msgId(reinterpret_cast<ObjcId>(poolClass), "new");
++    m_app = msgId(reinterpret_cast<ObjcId>(appClass), "sharedApplication");
++    msgIdInteger(m_app, "setActivationPolicy:", 0);
++    msgVoid(m_app, "finishLaunching");
++
++    constexpr unsigned long titled = 1u << 0;
++    constexpr unsigned long closable = 1u << 1;
++    constexpr unsigned long miniaturizable = 1u << 2;
++    constexpr unsigned long buffered = 2;
++
++    NSRect frame = {{160, 160}, {double(size.width()), double(size.height())}};
++    ObjcId allocatedWindow = msgId(reinterpret_cast<ObjcId>(windowClass), "alloc");
++    m_window = msgIdRectIntegerIntegerBool(allocatedWindow,
++                                           "initWithContentRect:styleMask:backing:defer:",
++                                           frame,
++                                           titled | closable | miniaturizable,
++                                           buffered,
++                                           false);
++    if (!m_window) {
++        m_error = "NSWindow allocation failed"_L1;
++        return false;
++    }
++    const QByteArray titleUtf8 = title.toUtf8();
++    msgVoidId(m_window, "setTitle:", string(titleUtf8.constData()));
++    msgVoidBool(m_window, "setReleasedWhenClosed:", false);
++    msgVoidId(m_window, "makeKeyAndOrderFront:", nullptr);
++    msgVoid(m_window, "orderFrontRegardless");
++    msgVoidBool(m_app, "activateIgnoringOtherApps:", true);
++    beginLatencyCriticalActivity();
++
++    m_size = size;
++    return true;
++}
++
++void QCosmoNativeMacHost::shutdown()
++{
++    endLatencyCriticalActivity();
++
++    if (m_window)
++        msgVoid(m_window, "close");
++    if (m_imageView)
++        msgVoid(m_imageView, "release");
++    if (m_image)
++        msgVoid(m_image, "release");
++    if (m_bitmapRep)
++        msgVoid(m_bitmapRep, "release");
++    if (m_pool)
++        msgVoid(m_pool, "drain");
++    m_window = nullptr;
++    m_imageView = nullptr;
++    m_image = nullptr;
++    m_bitmapRep = nullptr;
++    m_pool = nullptr;
++}
++
++ObjcId QCosmoNativeMacHost::string(const char *value) const
++{
++    typedef ObjcId (*Msg)(ObjcId, ObjcSel, const char *);
++    return reinterpret_cast<Msg>(m_msgSend)(reinterpret_cast<ObjcId>(cls("NSString")),
++                                            sel("stringWithUTF8String:"), value);
++}
++
++ObjcId QCosmoNativeMacHost::msgId(ObjcId receiver, const char *selector) const
++{
++    typedef ObjcId (*Msg)(ObjcId, ObjcSel);
++    return reinterpret_cast<Msg>(m_msgSend)(receiver, sel(selector));
++}
++
++ObjcId QCosmoNativeMacHost::msgIdId(ObjcId receiver, const char *selector, ObjcId arg) const
++{
++    typedef ObjcId (*Msg)(ObjcId, ObjcSel, ObjcId);
++    return reinterpret_cast<Msg>(m_msgSend)(receiver, sel(selector), arg);
++}
++
++ObjcId QCosmoNativeMacHost::msgIdBool(ObjcId receiver, const char *selector, bool arg) const
++{
++    typedef ObjcId (*Msg)(ObjcId, ObjcSel, bool);
++    return reinterpret_cast<Msg>(m_msgSend)(receiver, sel(selector), arg);
++}
++
++ObjcId QCosmoNativeMacHost::msgIdInteger(ObjcId receiver, const char *selector, long arg) const
++{
++    typedef ObjcId (*Msg)(ObjcId, ObjcSel, long);
++    return reinterpret_cast<Msg>(m_msgSend)(receiver, sel(selector), arg);
++}
++
++ObjcId QCosmoNativeMacHost::msgIdUnsignedLongLongId(ObjcId receiver, const char *selector,
++                                                   unsigned long long arg, ObjcId idArg) const
++{
++    typedef ObjcId (*Msg)(ObjcId, ObjcSel, unsigned long long, ObjcId);
++    return reinterpret_cast<Msg>(m_msgSend)(receiver, sel(selector), arg, idArg);
++}
++
++ObjcId QCosmoNativeMacHost::msgIdRect(ObjcId receiver, const char *selector, NSRect rect) const
++{
++    typedef ObjcId (*Msg)(ObjcId, ObjcSel, NSRect);
++    return reinterpret_cast<Msg>(m_msgSend)(receiver, sel(selector), rect);
++}
++
++ObjcId QCosmoNativeMacHost::msgIdRectIntegerIntegerBool(ObjcId receiver, const char *selector,
++                                                       NSRect rect, unsigned long style,
++                                                       unsigned long backing, bool defer) const
++{
++    typedef ObjcId (*Msg)(ObjcId, ObjcSel, NSRect, unsigned long, unsigned long, bool);
++    return reinterpret_cast<Msg>(m_msgSend)(receiver, sel(selector), rect, style, backing, defer);
++}
++
++ObjcId QCosmoNativeMacHost::msgIdSize(ObjcId receiver, const char *selector, NSSize size) const
++{
++    typedef ObjcId (*Msg)(ObjcId, ObjcSel, NSSize);
++    return reinterpret_cast<Msg>(m_msgSend)(receiver, sel(selector), size);
++}
++
++ObjcId QCosmoNativeMacHost::msgBitmapRep(ObjcId receiver, unsigned char **planes, int width,
++                                        int height, int bytesPerLine) const
++{
++    typedef ObjcId (*Msg)(ObjcId, ObjcSel, unsigned char **, long, long, long, long, bool,
++                          bool, ObjcId, unsigned long, long, long);
++    constexpr unsigned long alphaFirst = 1u << 0;
++    constexpr unsigned long littleEndian32 = 1u << 9;
++    return reinterpret_cast<Msg>(m_msgSend)(
++            receiver,
++            sel("initWithBitmapDataPlanes:pixelsWide:pixelsHigh:bitsPerSample:samplesPerPixel:"
++                "hasAlpha:isPlanar:colorSpaceName:bitmapFormat:bytesPerRow:bitsPerPixel:"),
++            planes, width, height, 8, 4, true, false, string("NSDeviceRGBColorSpace"),
++            alphaFirst | littleEndian32, bytesPerLine, 32);
++}
++
++ObjcId QCosmoNativeMacHost::nextEvent() const
++{
++    typedef ObjcId (*Msg)(ObjcId, ObjcSel, unsigned long, ObjcId, ObjcId, bool);
++    ObjcId date = msgId(reinterpret_cast<ObjcId>(cls("NSDate")), "distantPast");
++    ObjcId mode = const_cast<QCosmoNativeMacHost *>(this)->string("kCFRunLoopDefaultMode");
++    return reinterpret_cast<Msg>(m_msgSend)(
++            m_app, sel("nextEventMatchingMask:untilDate:inMode:dequeue:"), ~0ul, date, mode,
++            true);
++}
++
++void QCosmoNativeMacHost::msgVoid(ObjcId receiver, const char *selector) const
++{
++    typedef void (*Msg)(ObjcId, ObjcSel);
++    reinterpret_cast<Msg>(m_msgSend)(receiver, sel(selector));
++}
++
++void QCosmoNativeMacHost::msgVoidId(ObjcId receiver, const char *selector, ObjcId arg) const
++{
++    typedef void (*Msg)(ObjcId, ObjcSel, ObjcId);
++    reinterpret_cast<Msg>(m_msgSend)(receiver, sel(selector), arg);
++}
++
++void QCosmoNativeMacHost::msgVoidBool(ObjcId receiver, const char *selector, bool arg) const
++{
++    typedef void (*Msg)(ObjcId, ObjcSel, bool);
++    reinterpret_cast<Msg>(m_msgSend)(receiver, sel(selector), arg);
++}
++
++void QCosmoNativeMacHost::msgVoidInteger(ObjcId receiver, const char *selector, long arg) const
++{
++    typedef void (*Msg)(ObjcId, ObjcSel, long);
++    reinterpret_cast<Msg>(m_msgSend)(receiver, sel(selector), arg);
++}
++
++long QCosmoNativeMacHost::msgLong(ObjcId receiver, const char *selector) const
++{
++    typedef long (*Msg)(ObjcId, ObjcSel);
++    return reinterpret_cast<Msg>(m_msgSend)(receiver, sel(selector));
++}
++
++bool QCosmoNativeMacHost::msgBool(ObjcId receiver, const char *selector) const
++{
++    typedef bool (*Msg)(ObjcId, ObjcSel);
++    return reinterpret_cast<Msg>(m_msgSend)(receiver, sel(selector));
++}
++
++double QCosmoNativeMacHost::msgDouble(ObjcId receiver, const char *selector) const
++{
++    typedef double (*Msg)(ObjcId, ObjcSel);
++    return reinterpret_cast<Msg>(m_msgSend)(receiver, sel(selector));
++}
++
++unsigned short QCosmoNativeMacHost::msgUShort(ObjcId receiver, const char *selector) const
++{
++    typedef unsigned short (*Msg)(ObjcId, ObjcSel);
++    return reinterpret_cast<Msg>(m_msgSend)(receiver, sel(selector));
++}
++
++unsigned long QCosmoNativeMacHost::msgULong(ObjcId receiver, const char *selector) const
++{
++    typedef unsigned long (*Msg)(ObjcId, ObjcSel);
++    return reinterpret_cast<Msg>(m_msgSend)(receiver, sel(selector));
++}
++
++const char *QCosmoNativeMacHost::msgUtf8String(ObjcId receiver, const char *selector) const
++{
++    typedef const char *(*Msg)(ObjcId, ObjcSel);
++    return reinterpret_cast<Msg>(m_msgSend)(receiver, sel(selector));
++}
++
++NSPoint QCosmoNativeMacHost::msgPoint(ObjcId receiver, const char *selector) const
++{
++    typedef NSPoint (*Msg)(ObjcId, ObjcSel);
++    return reinterpret_cast<Msg>(m_msgSend)(receiver, sel(selector));
++}
++
++bool QCosmoNativeMacHost::recreateImageView(const QImage &image)
++{
++    if (m_bitmapRep)
++        msgVoid(m_bitmapRep, "release");
++    if (m_image)
++        msgVoid(m_image, "release");
++
++    ObjcClass bitmapClass = cls("NSBitmapImageRep");
++    ObjcClass imageClass = cls("NSImage");
++    ObjcClass imageViewClass = cls("NSImageView");
++    if (!bitmapClass || !imageClass || !imageViewClass) {
++        m_error = "AppKit image classes are unavailable"_L1;
++        return false;
++    }
++
++    unsigned char *planes[5] = { const_cast<unsigned char *>(image.bits()), nullptr, nullptr,
++                                 nullptr, nullptr };
++    ObjcId bitmap = msgId(reinterpret_cast<ObjcId>(bitmapClass), "alloc");
++    m_bitmapRep = msgBitmapRep(bitmap, planes, image.width(), image.height(), image.bytesPerLine());
++
++    ObjcId allocatedImage = msgId(reinterpret_cast<ObjcId>(imageClass), "alloc");
++    m_image = msgIdSize(allocatedImage, "initWithSize:",
++                        NSSize{double(image.width()), double(image.height())});
++    msgVoidId(m_image, "addRepresentation:", m_bitmapRep);
++
++    if (!m_imageView) {
++        ObjcId allocatedView = msgId(reinterpret_cast<ObjcId>(imageViewClass), "alloc");
++        m_imageView = msgIdRect(allocatedView, "initWithFrame:",
++                                NSRect{{0, 0},
++                                       {double(image.width()), double(image.height())}});
++        if (!m_imageView) {
++            m_error = "NSImageView allocation failed"_L1;
++            return false;
++        }
++        msgVoidInteger(m_imageView, "setImageScaling:", 3);
++        msgVoidId(m_window, "setContentView:", m_imageView);
++    }
++
++    msgVoidId(m_imageView, "setImage:", m_image);
++    m_imageBits = image.bits();
++    m_bytesPerLine = image.bytesPerLine();
++    m_size = image.size();
++    return true;
++}
++
++void QCosmoNativeMacHost::beginLatencyCriticalActivity()
++{
++    ObjcClass processInfoClass = cls("NSProcessInfo");
++    if (!processInfoClass)
++        return;
++
++    ObjcId processInfo = msgId(reinterpret_cast<ObjcId>(processInfoClass), "processInfo");
++    if (!processInfo)
++        return;
++
++    constexpr unsigned long long idleSystemSleepDisabled = 1ULL << 20;
++    constexpr unsigned long long userInitiated =
++            0x00FFFFFFULL | idleSystemSleepDisabled;
++    constexpr unsigned long long userInitiatedAllowingIdleSystemSleep =
++            userInitiated & ~idleSystemSleepDisabled;
++    constexpr unsigned long long latencyCritical = 0xFF00000000ULL;
++
++    m_processInfoActivity = msgIdUnsignedLongLongId(
++            processInfo, "beginActivityWithOptions:reason:",
++            userInitiatedAllowingIdleSystemSleep | latencyCritical,
++            string("Fiamy audio playback"));
++}
++
++void QCosmoNativeMacHost::endLatencyCriticalActivity()
++{
++    if (!m_processInfoActivity)
++        return;
++
++    ObjcClass processInfoClass = cls("NSProcessInfo");
++    ObjcId processInfo =
++            processInfoClass ? msgId(reinterpret_cast<ObjcId>(processInfoClass), "processInfo")
++                             : nullptr;
++    if (processInfo)
++        msgVoidId(processInfo, "endActivity:", m_processInfoActivity);
++    m_processInfoActivity = nullptr;
++}
++
++void QCosmoNativeMacHost::blit(const QImage &image, const QRegion &region)
++{
++    Q_UNUSED(region);
++
++    if (!m_window)
++        return;
++
++    // NSImageView may keep drawing the cached NSImage contents even when the
++    // backing QImage memory changes. Rebuild the representation for each Qt
++    // framebuffer blit so the native window presents the current scene, not a
++    // stale snapshot that only grabWindow() can see.
++    if (!recreateImageView(image))
++        return;
++
++    msgVoidBool(m_imageView, "setNeedsDisplay:", true);
++    msgVoid(m_imageView, "displayIfNeeded");
++    msgVoid(m_window, "displayIfNeeded");
++    msgVoid(m_app, "updateWindows");
++}
++
++QString QCosmoNativeMacHost::eventText(ObjcId event) const
++{
++    ObjcId chars = msgId(event, "characters");
++    if (!chars)
++        return QString();
++    const char *utf8 = msgUtf8String(chars, "UTF8String");
++    return QString::fromUtf8(utf8 ? utf8 : "");
++}
++
++QString QCosmoNativeMacHost::pasteboardText() const
++{
++    ObjcClass pasteboardClass = cls("NSPasteboard");
++    if (!pasteboardClass)
++        return QString();
++
++    ObjcId pasteboard = msgId(reinterpret_cast<ObjcId>(pasteboardClass), "generalPasteboard");
++    if (!pasteboard)
++        return QString();
++
++    ObjcId text = msgIdId(pasteboard, "stringForType:", string("public.utf8-plain-text"));
++    if (!text)
++        text = msgIdId(pasteboard, "stringForType:", string("NSStringPboardType"));
++
++    const char *utf8 = text ? msgUtf8String(text, "UTF8String") : nullptr;
++    return QString::fromUtf8(utf8 ? utf8 : "");
++}
++
++int QCosmoNativeMacHost::qtKeyForEvent(ObjcId event, const QString &text) const
++{
++    switch (msgUShort(event, "keyCode")) {
++    case 36:
++        return Qt::Key_Return;
++    case 48:
++        return Qt::Key_Tab;
++    case 49:
++        return Qt::Key_Space;
++    case 51:
++        return Qt::Key_Backspace;
++    case 53:
++        return Qt::Key_Escape;
++    case 123:
++        return Qt::Key_Left;
++    case 124:
++        return Qt::Key_Right;
++    case 125:
++        return Qt::Key_Down;
++    case 126:
++        return Qt::Key_Up;
++    default:
++        return qtKeyFromLatin1(text);
++    }
++}
++
++Qt::KeyboardModifiers QCosmoNativeMacHost::qtModifiersForEvent(ObjcId event) const
++{
++    constexpr unsigned long shift = 1ul << 17;
++    constexpr unsigned long control = 1ul << 18;
++    constexpr unsigned long option = 1ul << 19;
++    constexpr unsigned long command = 1ul << 20;
++
++    const unsigned long flags = msgULong(event, "modifierFlags");
++    Qt::KeyboardModifiers modifiers = Qt::NoModifier;
++    if (flags & shift)
++        modifiers |= Qt::ShiftModifier;
++    if (flags & option)
++        modifiers |= Qt::AltModifier;
++    if (flags & command)
++        modifiers |= Qt::ControlModifier;
++    if (flags & control)
++        modifiers |= Qt::MetaModifier;
++    return modifiers;
++}
++
++QPointF QCosmoNativeMacHost::qtMousePosition(ObjcId event) const
++{
++    const NSPoint point = msgPoint(event, "locationInWindow");
++    return QPointF(point.x, m_size.height() - point.y);
++}
++
++void QCosmoNativeMacHost::translateEvent(ObjcId event, QCosmoNativeEventSink *sink)
++{
++    if (!event || !sink)
++        return;
++
++    const long type = msgLong(event, "type");
++    switch (type) {
++    case 1: // NSLeftMouseDown
++        m_buttons |= Qt::LeftButton;
++        sink->handleHostMouse(qtMousePosition(event), m_buttons, Qt::LeftButton,
++                              QEvent::MouseButtonPress);
++        break;
++    case 2: // NSLeftMouseUp
++        m_buttons &= ~Qt::LeftButton;
++        sink->handleHostMouse(qtMousePosition(event), m_buttons, Qt::LeftButton,
++                              QEvent::MouseButtonRelease);
++        break;
++    case 3: // NSRightMouseDown
++        m_buttons |= Qt::RightButton;
++        sink->handleHostMouse(qtMousePosition(event), m_buttons, Qt::RightButton,
++                              QEvent::MouseButtonPress);
++        break;
++    case 4: // NSRightMouseUp
++        m_buttons &= ~Qt::RightButton;
++        sink->handleHostMouse(qtMousePosition(event), m_buttons, Qt::RightButton,
++                              QEvent::MouseButtonRelease);
++        break;
++    case 5: // NSMouseMoved
++    case 6: // NSLeftMouseDragged
++    case 7: // NSRightMouseDragged
++    case 27: // NSOtherMouseDragged
++        sink->handleHostMouse(qtMousePosition(event), m_buttons, Qt::NoButton,
++                              QEvent::MouseMove);
++        break;
++    case 10: { // NSKeyDown
++        const QString text = eventText(event);
++        const int key = qtKeyForEvent(event, text);
++        const Qt::KeyboardModifiers modifiers = qtModifiersForEvent(event);
++        if ((modifiers & Qt::ControlModifier) && key == Qt::Key_V) {
++            const QString pastedText = pasteboardText();
++            if (!pastedText.isEmpty()) {
++                sink->handleHostKey(QEvent::KeyPress, Qt::Key_unknown, Qt::NoModifier,
++                                    pastedText);
++                sink->handleHostKey(QEvent::KeyRelease, Qt::Key_unknown, Qt::NoModifier,
++                                    QString());
++                break;
++            }
++        }
++        sink->handleHostKey(QEvent::KeyPress, key, modifiers, text);
++        break;
++    }
++    case 11: { // NSKeyUp
++        const QString text = eventText(event);
++        sink->handleHostKey(QEvent::KeyRelease, qtKeyForEvent(event, text),
++                            qtModifiersForEvent(event), text);
++        break;
++    }
++    case 22: { // NSScrollWheel
++        const double dy = msgDouble(event, "scrollingDeltaY");
++        const double dx = msgDouble(event, "scrollingDeltaX");
++        sink->handleHostWheel(qtMousePosition(event), QPoint(int(dx * 8), int(dy * 8)));
++        break;
++    }
++    default:
++        break;
++    }
++}
++
++void QCosmoNativeMacHost::pumpEvents(QCosmoNativeEventSink *sink)
++{
++    if (!m_window)
++        return;
++
++    for (;;) {
++        ObjcId event = nextEvent();
++        if (!event)
++            break;
++        translateEvent(event, sink);
++        msgVoidId(m_app, "sendEvent:", event);
++    }
++
++    msgVoid(m_app, "updateWindows");
++
++    if (!msgBool(m_window, "isVisible") && sink)
++        sink->handleHostClose();
++}
++
++// -------------------------------------------------------------------------
++// Windows host.
++
++#if defined(__GNUC__)
++#define QCOSMO_MSABI __attribute__((__ms_abi__))
++#else
++#define QCOSMO_MSABI
++#endif
++
++struct WinBitmapInfoHeader {
++    uint32_t biSize;
++    int32_t biWidth;
++    int32_t biHeight;
++    uint16_t biPlanes;
++    uint16_t biBitCount;
++    uint32_t biCompression;
++    uint32_t biSizeImage;
++    int32_t biXPelsPerMeter;
++    int32_t biYPelsPerMeter;
++    uint32_t biClrUsed;
++    uint32_t biClrImportant;
++};
++
++struct WinBitmapInfo {
++    WinBitmapInfoHeader bmiHeader;
++    uint32_t bmiColors[3];
++};
++
++class QCosmoNativeWindowsHost final : public QCosmoNativeHost
++{
++public:
++    bool initialize(const QSize &size, const QString &title) override;
++    void shutdown() override;
++    void pumpEvents(QCosmoNativeEventSink *sink) override;
++    void blit(const QImage &image, const QRegion &region) override;
++    QString errorString() const override { return m_error; }
++
++    int64_t wndProc(int64_t hwnd, uint32_t message, uint64_t wParam, int64_t lParam);
++
++private:
++    struct PendingEvent {
++        enum Kind { Close, Mouse, Wheel, Key, Resize } kind = Close;
++        QPointF position;
++        QSize size;
++        Qt::MouseButtons buttons = Qt::NoButton;
++        Qt::MouseButton changedButton = Qt::NoButton;
++        QEvent::Type eventType = QEvent::None;
++        QPoint angleDelta;
++        int key = Qt::Key_unknown;
++        Qt::KeyboardModifiers modifiers = Qt::NoModifier;
++        QString text;
++    };
++
++    template <typename T>
++    T loadNtFunction(int64_t library, const char *name)
++    {
++        void *symbol = GetProcAddress(library, name);
++        if (!symbol)
++            m_error = QString::fromLatin1("GetProcAddress failed for %1").arg(name);
++        return reinterpret_cast<T>(symbol);
++    }
++
++    void enqueueMouse(uint32_t message, int64_t lParam);
++    void enqueueWheel(uint64_t wParam, int64_t lParam);
++    void enqueueKey(uint32_t message, uint64_t wParam);
++    void enqueueResize(int64_t lParam);
++
++    typedef int64_t(QCOSMO_MSABI *GetDCFn)(int64_t);
++    typedef int32_t(QCOSMO_MSABI *ReleaseDCFn)(int64_t, int64_t);
++    typedef int32_t(QCOSMO_MSABI *StretchDIBitsFn)(int64_t, int, int, int, int, int, int, int,
++                                                   int, const void *, const WinBitmapInfo *,
++                                                   uint32_t, uint32_t);
++    typedef int32_t(QCOSMO_MSABI *PeekMessageWFn)(NtMsg *, int64_t, uint32_t, uint32_t,
++                                                  uint32_t);
++    typedef bool32(QCOSMO_MSABI *InvalidateRectFn)(int64_t, const NtRect *, bool32);
++    typedef bool32(QCOSMO_MSABI *UpdateWindowFn)(int64_t);
++
++    int64_t m_hwnd = 0;
++    GetDCFn m_getDC = nullptr;
++    ReleaseDCFn m_releaseDC = nullptr;
++    StretchDIBitsFn m_stretchDIBits = nullptr;
++    PeekMessageWFn m_peekMessage = nullptr;
++    InvalidateRectFn m_invalidateRect = nullptr;
++    UpdateWindowFn m_updateWindow = nullptr;
++    QSize m_size;
++    Qt::MouseButtons m_buttons = Qt::NoButton;
++    std::deque<PendingEvent> m_pending;
++    QString m_error;
++};
++
++static QCosmoNativeWindowsHost *g_windowsHost = nullptr;
++
++static int64_t cosmoNativeWindowProc(int64_t hwnd, uint32_t message, uint64_t wParam,
++                                     int64_t lParam)
++{
++    if (g_windowsHost)
++        return g_windowsHost->wndProc(hwnd, message, wParam, lParam);
++    return DefWindowProc(hwnd, message, wParam, lParam);
++}
++
++bool QCosmoNativeWindowsHost::initialize(const QSize &size, const QString &title)
++{
++    int64_t user32 = LoadLibraryA("user32.dll");
++    int64_t gdi32 = LoadLibraryA("gdi32.dll");
++    if (!user32 || !gdi32) {
++        m_error = "failed to load user32.dll or gdi32.dll"_L1;
++        return false;
++    }
++
++    m_getDC = loadNtFunction<GetDCFn>(user32, "GetDC");
++    m_releaseDC = loadNtFunction<ReleaseDCFn>(user32, "ReleaseDC");
++    m_peekMessage = loadNtFunction<PeekMessageWFn>(user32, "PeekMessageW");
++    m_invalidateRect = loadNtFunction<InvalidateRectFn>(user32, "InvalidateRect");
++    m_updateWindow = loadNtFunction<UpdateWindowFn>(user32, "UpdateWindow");
++    m_stretchDIBits = loadNtFunction<StretchDIBitsFn>(gdi32, "StretchDIBits");
++    if (!m_getDC || !m_releaseDC || !m_peekMessage || !m_invalidateRect || !m_updateWindow
++        || !m_stretchDIBits)
++        return false;
++
++    g_windowsHost = this;
++
++    static const char16_t className[] = u"FiamyCosmoNativeWindow";
++    NtWndClass wc = {};
++    wc.style = kNtCsHredraw | kNtCsVredraw | kNtCsDblclks;
++    wc.lpfnWndProc = cosmoNativeWindowProc;
++    wc.lpszClassName = className;
++    RegisterClass(&wc);
++
++    const QString windowTitle = title.isEmpty() ? "Fiamy"_L1 : title;
++    const std::u16string wideTitle = windowTitle.toStdU16String();
++    const uint32_t style = kNtWsOverlappedwindow | kNtWsVisible;
++    m_hwnd = CreateWindowEx(0, className,
++                            reinterpret_cast<const char16_t *>(wideTitle.c_str()),
++                            style, kNtCwUsedefault,
++                            kNtCwUsedefault, size.width(), size.height(), 0, 0, 0, 0);
++    if (!m_hwnd) {
++        m_error = "CreateWindowEx failed"_L1;
++        g_windowsHost = nullptr;
++        return false;
++    }
++
++    ShowWindow(m_hwnd, kNtSwShow);
++    m_size = size;
++    return true;
++}
++
++void QCosmoNativeWindowsHost::shutdown()
++{
++    if (m_hwnd)
++        DestroyWindow(m_hwnd);
++    m_hwnd = 0;
++    if (g_windowsHost == this)
++        g_windowsHost = nullptr;
++}
++
++void QCosmoNativeWindowsHost::enqueueMouse(uint32_t message, int64_t lParam)
++{
++    const int x = int(int16_t(lParam & 0xffff));
++    const int y = int(int16_t((uint64_t(lParam) >> 16) & 0xffff));
++
++    PendingEvent event;
++    event.kind = PendingEvent::Mouse;
++    event.position = QPointF(x, y);
++
++    switch (message) {
++    case kNtWmLbuttondown:
++        m_buttons |= Qt::LeftButton;
++        event.changedButton = Qt::LeftButton;
++        event.eventType = QEvent::MouseButtonPress;
++        SetCapture(m_hwnd);
++        break;
++    case kNtWmLbuttonup:
++        m_buttons &= ~Qt::LeftButton;
++        event.changedButton = Qt::LeftButton;
++        event.eventType = QEvent::MouseButtonRelease;
++        ReleaseCapture();
++        break;
++    case kNtWmRbuttondown:
++        m_buttons |= Qt::RightButton;
++        event.changedButton = Qt::RightButton;
++        event.eventType = QEvent::MouseButtonPress;
++        SetCapture(m_hwnd);
++        break;
++    case kNtWmRbuttonup:
++        m_buttons &= ~Qt::RightButton;
++        event.changedButton = Qt::RightButton;
++        event.eventType = QEvent::MouseButtonRelease;
++        ReleaseCapture();
++        break;
++    case kNtWmMbuttondown:
++        m_buttons |= Qt::MiddleButton;
++        event.changedButton = Qt::MiddleButton;
++        event.eventType = QEvent::MouseButtonPress;
++        SetCapture(m_hwnd);
++        break;
++    case kNtWmMbuttonup:
++        m_buttons &= ~Qt::MiddleButton;
++        event.changedButton = Qt::MiddleButton;
++        event.eventType = QEvent::MouseButtonRelease;
++        ReleaseCapture();
++        break;
++    default:
++        event.changedButton = Qt::NoButton;
++        event.eventType = QEvent::MouseMove;
++        break;
++    }
++    event.buttons = m_buttons;
++    m_pending.push_back(event);
++}
++
++void QCosmoNativeWindowsHost::enqueueWheel(uint64_t wParam, int64_t lParam)
++{
++    PendingEvent event;
++    event.kind = PendingEvent::Wheel;
++    event.position = QPointF(int(int16_t(lParam & 0xffff)),
++                             int(int16_t((uint64_t(lParam) >> 16) & 0xffff)));
++    event.angleDelta = QPoint(0, int(int16_t((wParam >> 16) & 0xffff)));
++    m_pending.push_back(event);
++}
++
++void QCosmoNativeWindowsHost::enqueueKey(uint32_t message, uint64_t wParam)
++{
++    PendingEvent event;
++    event.kind = PendingEvent::Key;
++    event.eventType = message == kNtWmKeyup ? QEvent::KeyRelease : QEvent::KeyPress;
++    event.key = Qt::Key_unknown;
++    if (wParam >= 'A' && wParam <= 'Z')
++        event.key = Qt::Key_A + int(wParam - 'A');
++    else if (wParam >= '0' && wParam <= '9')
++        event.key = Qt::Key_0 + int(wParam - '0');
++    else if (wParam == 0x0d)
++        event.key = Qt::Key_Return;
++    else if (wParam == 0x1b)
++        event.key = Qt::Key_Escape;
++    else if (wParam == 0x08)
++        event.key = Qt::Key_Backspace;
++    else if (wParam == 0x20)
++        event.key = Qt::Key_Space;
++    if (event.key >= 0x20 && event.key <= 0x7e)
++        event.text = QString(QChar(ushort(event.key)));
++    m_pending.push_back(event);
++}
++
++void QCosmoNativeWindowsHost::enqueueResize(int64_t lParam)
++{
++    const int width = int(uint16_t(lParam & 0xffff));
++    const int height = int(uint16_t((uint64_t(lParam) >> 16) & 0xffff));
++    if (width <= 0 || height <= 0)
++        return;
++
++    PendingEvent event;
++    event.kind = PendingEvent::Resize;
++    event.size = QSize(width, height);
++    m_pending.push_back(event);
++    m_size = event.size;
++}
++
++int64_t QCosmoNativeWindowsHost::wndProc(int64_t hwnd, uint32_t message, uint64_t wParam,
++                                         int64_t lParam)
++{
++    switch (message) {
++    case kNtWmClose:
++    case kNtWmDestroy: {
++        PendingEvent event;
++        event.kind = PendingEvent::Close;
++        m_pending.push_back(event);
++        return 0;
++    }
++    case kNtWmLbuttondown:
++    case kNtWmLbuttonup:
++    case kNtWmRbuttondown:
++    case kNtWmRbuttonup:
++    case kNtWmMbuttondown:
++    case kNtWmMbuttonup:
++    case kNtWmMousemove:
++        enqueueMouse(message, lParam);
++        return 0;
++    case kNtWmMousewheel:
++        enqueueWheel(wParam, lParam);
++        return 0;
++    case kNtWmKeydown:
++    case kNtWmKeyup:
++        enqueueKey(message, wParam);
++        return 0;
++    case kNtWmSize:
++        enqueueResize(lParam);
++        return 0;
++    case kNtWmPaint: {
++        NtPaintStruct ps;
++        BeginPaint(hwnd, &ps);
++        EndPaint(hwnd, &ps);
++        return 0;
++    }
++    default:
++        return DefWindowProc(hwnd, message, wParam, lParam);
++    }
++}
++
++void QCosmoNativeWindowsHost::pumpEvents(QCosmoNativeEventSink *sink)
++{
++    if (!m_hwnd)
++        return;
++
++    NtMsg msg;
++    while (m_peekMessage(&msg, 0, 0, 0, 1)) {
++        TranslateMessage(&msg);
++        DispatchMessage(&msg);
++    }
++
++    while (!m_pending.empty()) {
++        const PendingEvent event = m_pending.front();
++        m_pending.pop_front();
++        if (!sink)
++            continue;
++        switch (event.kind) {
++        case PendingEvent::Close:
++            sink->handleHostClose();
++            break;
++        case PendingEvent::Mouse:
++            sink->handleHostMouse(event.position, event.buttons, event.changedButton,
++                                  event.eventType);
++            break;
++        case PendingEvent::Wheel:
++            sink->handleHostWheel(event.position, event.angleDelta);
++            break;
++        case PendingEvent::Key:
++            sink->handleHostKey(event.eventType, event.key, event.modifiers, event.text);
++            break;
++        case PendingEvent::Resize:
++            sink->handleHostResize(event.size);
++            break;
++        }
++    }
++}
++
++void QCosmoNativeWindowsHost::blit(const QImage &image, const QRegion &region)
++{
++    if (!m_hwnd || image.isNull())
++        return;
++
++    WinBitmapInfo bmi = {};
++    bmi.bmiHeader.biSize = sizeof(WinBitmapInfoHeader);
++    bmi.bmiHeader.biWidth = image.width();
++    bmi.bmiHeader.biHeight = -image.height();
++    bmi.bmiHeader.biPlanes = 1;
++    bmi.bmiHeader.biBitCount = 32;
++    bmi.bmiHeader.biCompression = 0; // BI_RGB
++
++    int64_t hdc = m_getDC(m_hwnd);
++    if (!hdc)
++        return;
++
++    for (const QRect &rect : region) {
++        m_stretchDIBits(hdc, rect.x(), rect.y(), rect.width(), rect.height(), rect.x(),
++                        image.height() - rect.y() - rect.height(), rect.width(), rect.height(),
++                        image.bits(), &bmi, 0, 0x00cc0020);
++    }
++    m_releaseDC(m_hwnd, hdc);
++    m_invalidateRect(m_hwnd, nullptr, false);
++    m_updateWindow(m_hwnd);
++}
++
++// -------------------------------------------------------------------------
++// Linux/X11 host. It uses the system X11 client library as the native desktop
++// transport because that is the stable host-window ABI most Linux desktops
++// still expose for non-toolkit apps.
++
++class QCosmoNativeX11Host final : public QCosmoNativeHost
++{
++public:
++    bool initialize(const QSize &size, const QString &title) override;
++    void shutdown() override;
++    void pumpEvents(QCosmoNativeEventSink *sink) override;
++    void blit(const QImage &image, const QRegion &region) override;
++    QString errorString() const override { return m_error; }
++
++private:
++    struct XAnyEvent {
++        int type;
++        unsigned long serial;
++        int send_event;
++        void *display;
++        unsigned long window;
++    };
++    struct XButtonEvent {
++        int type;
++        unsigned long serial;
++        int send_event;
++        void *display;
++        unsigned long window;
++        unsigned long root;
++        unsigned long subwindow;
++        unsigned long time;
++        int x;
++        int y;
++        int x_root;
++        int y_root;
++        unsigned int state;
++        unsigned int button;
++        int same_screen;
++    };
++    struct XKeyEvent {
++        int type;
++        unsigned long serial;
++        int send_event;
++        void *display;
++        unsigned long window;
++        unsigned long root;
++        unsigned long subwindow;
++        unsigned long time;
++        int x;
++        int y;
++        int x_root;
++        int y_root;
++        unsigned int state;
++        unsigned int keycode;
++        int same_screen;
++    };
++    struct XConfigureEvent {
++        int type;
++        unsigned long serial;
++        int send_event;
++        void *display;
++        unsigned long event;
++        unsigned long window;
++        int x;
++        int y;
++        int width;
++        int height;
++    };
++    union XEvent {
++        int type;
++        char pad[192];
++        XAnyEvent xany;
++        XButtonEvent xbutton;
++        XButtonEvent xmotion;
++        XKeyEvent xkey;
++        XConfigureEvent xconfigure;
++    };
++
++    template <typename T>
++    T loadX11(const char *name)
++    {
++        T fn = cosmoLoadFunction<T>(m_x11, name);
++        if (!fn)
++            m_error = lastCosmoDlError(name);
++        return fn;
++    }
++
++    bool ensureImage(const QImage &image);
++    void translateEvent(const XEvent &event, QCosmoNativeEventSink *sink);
++    void translateButton(const XButtonEvent &event, bool pressed, QCosmoNativeEventSink *sink);
++    void translateKey(const XKeyEvent &event, QEvent::Type type, QCosmoNativeEventSink *sink);
++
++    typedef void *(*XOpenDisplayFn)(const char *);
++    typedef int (*XCloseDisplayFn)(void *);
++    typedef int (*XDefaultScreenFn)(void *);
++    typedef unsigned long (*XRootWindowFn)(void *, int);
++    typedef unsigned long (*XBlackPixelFn)(void *, int);
++    typedef unsigned long (*XWhitePixelFn)(void *, int);
++    typedef void *(*XDefaultVisualFn)(void *, int);
++    typedef int (*XDefaultDepthFn)(void *, int);
++    typedef unsigned long (*XCreateSimpleWindowFn)(void *, unsigned long, int, int, unsigned int,
++                                                   unsigned int, unsigned int, unsigned long,
++                                                   unsigned long);
++    typedef int (*XStoreNameFn)(void *, unsigned long, const char *);
++    typedef int (*XSelectInputFn)(void *, unsigned long, long);
++    typedef int (*XMapWindowFn)(void *, unsigned long);
++    typedef void *(*XCreateGCFn)(void *, unsigned long, unsigned long, void *);
++    typedef int (*XFreeGCFn)(void *, void *);
++    typedef int (*XDestroyWindowFn)(void *, unsigned long);
++    typedef int (*XFlushFn)(void *);
++    typedef int (*XPendingFn)(void *);
++    typedef int (*XNextEventFn)(void *, XEvent *);
++    typedef void *(*XCreateImageFn)(void *, void *, unsigned int, int, int, char *, unsigned int,
++                                    unsigned int, int, int);
++    typedef int (*XPutImageFn)(void *, unsigned long, void *, void *, int, int, int, int,
++                               unsigned int, unsigned int);
++    typedef int (*XLookupStringFn)(XKeyEvent *, char *, int, unsigned long *, void *);
++
++    void *m_x11 = nullptr;
++    void *m_display = nullptr;
++    void *m_visual = nullptr;
++    void *m_gc = nullptr;
++    void *m_ximage = nullptr;
++    unsigned long m_window = 0;
++    int m_screen = 0;
++    int m_depth = 0;
++    QSize m_size;
++    const uchar *m_imageBits = nullptr;
++    int m_bytesPerLine = 0;
++    Qt::MouseButtons m_buttons = Qt::NoButton;
++    QString m_error;
++
++    XOpenDisplayFn XOpenDisplay = nullptr;
++    XCloseDisplayFn XCloseDisplay = nullptr;
++    XDefaultScreenFn XDefaultScreen = nullptr;
++    XRootWindowFn XRootWindow = nullptr;
++    XBlackPixelFn XBlackPixel = nullptr;
++    XWhitePixelFn XWhitePixel = nullptr;
++    XDefaultVisualFn XDefaultVisual = nullptr;
++    XDefaultDepthFn XDefaultDepth = nullptr;
++    XCreateSimpleWindowFn XCreateSimpleWindow = nullptr;
++    XStoreNameFn XStoreName = nullptr;
++    XSelectInputFn XSelectInput = nullptr;
++    XMapWindowFn XMapWindow = nullptr;
++    XCreateGCFn XCreateGC = nullptr;
++    XFreeGCFn XFreeGC = nullptr;
++    XDestroyWindowFn XDestroyWindow = nullptr;
++    XFlushFn XFlush = nullptr;
++    XPendingFn XPending = nullptr;
++    XNextEventFn XNextEvent = nullptr;
++    XCreateImageFn XCreateImage = nullptr;
++    XPutImageFn XPutImage = nullptr;
++    XLookupStringFn XLookupString = nullptr;
++};
++
++bool QCosmoNativeX11Host::initialize(const QSize &size, const QString &title)
++{
++    m_x11 = cosmo_dlopen("libX11.so.6", RTLD_NOW | RTLD_GLOBAL);
++    if (!m_x11)
++        m_x11 = cosmo_dlopen("libX11.so", RTLD_NOW | RTLD_GLOBAL);
++    if (!m_x11) {
++        m_error = lastCosmoDlError("libX11");
++        return false;
++    }
++
++    XOpenDisplay = loadX11<XOpenDisplayFn>("XOpenDisplay");
++    XCloseDisplay = loadX11<XCloseDisplayFn>("XCloseDisplay");
++    XDefaultScreen = loadX11<XDefaultScreenFn>("XDefaultScreen");
++    XRootWindow = loadX11<XRootWindowFn>("XRootWindow");
++    XBlackPixel = loadX11<XBlackPixelFn>("XBlackPixel");
++    XWhitePixel = loadX11<XWhitePixelFn>("XWhitePixel");
++    XDefaultVisual = loadX11<XDefaultVisualFn>("XDefaultVisual");
++    XDefaultDepth = loadX11<XDefaultDepthFn>("XDefaultDepth");
++    XCreateSimpleWindow = loadX11<XCreateSimpleWindowFn>("XCreateSimpleWindow");
++    XStoreName = loadX11<XStoreNameFn>("XStoreName");
++    XSelectInput = loadX11<XSelectInputFn>("XSelectInput");
++    XMapWindow = loadX11<XMapWindowFn>("XMapWindow");
++    XCreateGC = loadX11<XCreateGCFn>("XCreateGC");
++    XFreeGC = loadX11<XFreeGCFn>("XFreeGC");
++    XDestroyWindow = loadX11<XDestroyWindowFn>("XDestroyWindow");
++    XFlush = loadX11<XFlushFn>("XFlush");
++    XPending = loadX11<XPendingFn>("XPending");
++    XNextEvent = loadX11<XNextEventFn>("XNextEvent");
++    XCreateImage = loadX11<XCreateImageFn>("XCreateImage");
++    XPutImage = loadX11<XPutImageFn>("XPutImage");
++    XLookupString = loadX11<XLookupStringFn>("XLookupString");
++    if (!XOpenDisplay || !XCloseDisplay || !XDefaultScreen || !XRootWindow || !XBlackPixel
++        || !XWhitePixel || !XDefaultVisual || !XDefaultDepth || !XCreateSimpleWindow
++        || !XStoreName || !XSelectInput || !XMapWindow || !XCreateGC || !XFreeGC
++        || !XDestroyWindow || !XFlush || !XPending || !XNextEvent || !XCreateImage
++        || !XPutImage || !XLookupString)
++        return false;
++
++    m_display = XOpenDisplay(nullptr);
++    if (!m_display) {
++        m_error = "XOpenDisplay failed; DISPLAY is not available"_L1;
++        return false;
++    }
++
++    m_screen = XDefaultScreen(m_display);
++    m_visual = XDefaultVisual(m_display, m_screen);
++    m_depth = XDefaultDepth(m_display, m_screen);
++    const unsigned long root = XRootWindow(m_display, m_screen);
++    m_window = XCreateSimpleWindow(m_display, root, 80, 80, size.width(), size.height(), 0,
++                                   XBlackPixel(m_display, m_screen),
++                                   XWhitePixel(m_display, m_screen));
++    const QByteArray titleUtf8 = title.toUtf8();
++    XStoreName(m_display, m_window, titleUtf8.constData());
++
++    constexpr long keyPressMask = 1L << 0;
++    constexpr long keyReleaseMask = 1L << 1;
++    constexpr long buttonPressMask = 1L << 2;
++    constexpr long buttonReleaseMask = 1L << 3;
++    constexpr long pointerMotionMask = 1L << 6;
++    constexpr long exposureMask = 1L << 15;
++    constexpr long structureNotifyMask = 1L << 17;
++    XSelectInput(m_display, m_window,
++                 keyPressMask | keyReleaseMask | buttonPressMask | buttonReleaseMask
++                         | pointerMotionMask | exposureMask | structureNotifyMask);
++
++    m_gc = XCreateGC(m_display, m_window, 0, nullptr);
++    XMapWindow(m_display, m_window);
++    XFlush(m_display);
++    m_size = size;
++    return true;
++}
++
++void QCosmoNativeX11Host::shutdown()
++{
++    if (m_display) {
++        if (m_gc)
++            XFreeGC(m_display, m_gc);
++        if (m_window)
++            XDestroyWindow(m_display, m_window);
++        XCloseDisplay(m_display);
++    }
++    m_display = nullptr;
++    m_gc = nullptr;
++    m_window = 0;
++}
++
++bool QCosmoNativeX11Host::ensureImage(const QImage &image)
++{
++    if (m_ximage && m_imageBits == image.bits() && m_size == image.size()
++        && m_bytesPerLine == image.bytesPerLine())
++        return true;
++
++    m_ximage = XCreateImage(m_display, m_visual, m_depth, 2, 0,
++                            reinterpret_cast<char *>(const_cast<uchar *>(image.bits())),
++                            image.width(), image.height(), 32, image.bytesPerLine());
++    if (!m_ximage) {
++        m_error = "XCreateImage failed"_L1;
++        return false;
++    }
++    m_imageBits = image.bits();
++    m_size = image.size();
++    m_bytesPerLine = image.bytesPerLine();
++    return true;
++}
++
++void QCosmoNativeX11Host::blit(const QImage &image, const QRegion &region)
++{
++    if (!m_display || !m_window || !ensureImage(image))
++        return;
++
++    for (const QRect &rect : region) {
++        XPutImage(m_display, m_window, m_gc, m_ximage, rect.x(), rect.y(), rect.x(), rect.y(),
++                  rect.width(), rect.height());
++    }
++    XFlush(m_display);
++}
++
++void QCosmoNativeX11Host::translateButton(const XButtonEvent &event, bool pressed,
++                                          QCosmoNativeEventSink *sink)
++{
++    if (!sink)
++        return;
++
++    Qt::MouseButton button = Qt::NoButton;
++    if (event.button == 1)
++        button = Qt::LeftButton;
++    else if (event.button == 2)
++        button = Qt::MiddleButton;
++    else if (event.button == 3)
++        button = Qt::RightButton;
++
++    if (event.button == 4 || event.button == 5) {
++        sink->handleHostWheel(QPointF(event.x, event.y), QPoint(0, event.button == 4 ? 120 : -120));
++        return;
++    }
++
++    if (pressed)
++        m_buttons |= button;
++    else
++        m_buttons &= ~button;
++
++    sink->handleHostMouse(QPointF(event.x, event.y), m_buttons, button,
++                          pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease);
++}
++
++void QCosmoNativeX11Host::translateKey(const XKeyEvent &event, QEvent::Type type,
++                                       QCosmoNativeEventSink *sink)
++{
++    if (!sink)
++        return;
++
++    char buffer[16] = {};
++    unsigned long keysym = 0;
++    XKeyEvent copy = event;
++    const int length = XLookupString(&copy, buffer, int(sizeof(buffer) - 1), &keysym, nullptr);
++    QString text = length > 0 ? QString::fromUtf8(buffer, length) : QString();
++
++    int key = Qt::Key_unknown;
++    switch (keysym) {
++    case 0xff08:
++        key = Qt::Key_Backspace;
++        break;
++    case 0xff09:
++        key = Qt::Key_Tab;
++        break;
++    case 0xff0d:
++        key = Qt::Key_Return;
++        break;
++    case 0xff1b:
++        key = Qt::Key_Escape;
++        break;
++    case 0xff51:
++        key = Qt::Key_Left;
++        break;
++    case 0xff52:
++        key = Qt::Key_Up;
++        break;
++    case 0xff53:
++        key = Qt::Key_Right;
++        break;
++    case 0xff54:
++        key = Qt::Key_Down;
++        break;
++    default:
++        key = qtKeyFromLatin1(text);
++        break;
++    }
++
++    Qt::KeyboardModifiers modifiers = Qt::NoModifier;
++    if (event.state & 0x01)
++        modifiers |= Qt::ShiftModifier;
++    if (event.state & 0x04)
++        modifiers |= Qt::ControlModifier;
++    if (event.state & 0x08)
++        modifiers |= Qt::AltModifier;
++    if (event.state & 0x40)
++        modifiers |= Qt::MetaModifier;
++
++    sink->handleHostKey(type, key, modifiers, text);
++}
++
++void QCosmoNativeX11Host::translateEvent(const XEvent &event, QCosmoNativeEventSink *sink)
++{
++    switch (event.type) {
++    case 2: // KeyPress
++        translateKey(event.xkey, QEvent::KeyPress, sink);
++        break;
++    case 3: // KeyRelease
++        translateKey(event.xkey, QEvent::KeyRelease, sink);
++        break;
++    case 4: // ButtonPress
++        translateButton(event.xbutton, true, sink);
++        break;
++    case 5: // ButtonRelease
++        translateButton(event.xbutton, false, sink);
++        break;
++    case 6: // MotionNotify
++        if (sink)
++            sink->handleHostMouse(QPointF(event.xmotion.x, event.xmotion.y), m_buttons,
++                                  Qt::NoButton, QEvent::MouseMove);
++        break;
++    case 12: // Expose
++        if (m_display)
++            XFlush(m_display);
++        break;
++    case 17: // DestroyNotify
++        if (sink)
++            sink->handleHostClose();
++        break;
++    case 22: // ConfigureNotify
++        if (sink && event.xconfigure.width > 0 && event.xconfigure.height > 0) {
++            const QSize size(event.xconfigure.width, event.xconfigure.height);
++            if (size != m_size) {
++                m_size = size;
++                sink->handleHostResize(size);
++            }
++        }
++        break;
++    default:
++        break;
++    }
++}
++
++void QCosmoNativeX11Host::pumpEvents(QCosmoNativeEventSink *sink)
++{
++    if (!m_display)
++        return;
++
++    while (XPending(m_display) > 0) {
++        XEvent event;
++        memset(&event, 0, sizeof(event));
++        XNextEvent(m_display, &event);
++        translateEvent(event, sink);
++    }
++}
++
++} // namespace
++
++QCosmoNativeHost *QCosmoNativeHost::create()
++{
++    if (IsXnu())
++        return new QCosmoNativeMacHost;
++    if (IsWindows())
++        return new QCosmoNativeWindowsHost;
++    if (IsLinux())
++        return new QCosmoNativeX11Host;
++
++    return nullptr;
++}
++
++QT_END_NAMESPACE
+diff --git a/src/plugins/platforms/cosmonative/qcosmonativehost.h b/src/plugins/platforms/cosmonative/qcosmonativehost.h
+new file mode 100644
+index 00000000000..aa914db5ec1
+--- /dev/null
++++ b/src/plugins/platforms/cosmonative/qcosmonativehost.h
+@@ -0,0 +1,47 @@
++// Copyright (C) 2026
++// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
++
++#ifndef QCOSMONATIVEHOST_H
++#define QCOSMONATIVEHOST_H
++
++#include <QtCore/QEvent>
++#include <QtCore/QPoint>
++#include <QtCore/QScopedPointer>
++#include <QtCore/QString>
++#include <QtCore/Qt>
++#include <QtGui/QImage>
++#include <QtGui/QRegion>
++
++QT_BEGIN_NAMESPACE
++
++class QCosmoNativeEventSink
++{
++public:
++    virtual ~QCosmoNativeEventSink() = default;
++
++    virtual void handleHostClose() = 0;
++    virtual void handleHostMouse(const QPointF &position, Qt::MouseButtons buttons,
++                                 Qt::MouseButton changedButton, QEvent::Type type) = 0;
++    virtual void handleHostWheel(const QPointF &position, const QPoint &angleDelta) = 0;
++    virtual void handleHostKey(QEvent::Type type, int key, Qt::KeyboardModifiers modifiers,
++                               const QString &text) = 0;
++    virtual void handleHostResize(const QSize &size) = 0;
++};
++
++class QCosmoNativeHost
++{
++public:
++    virtual ~QCosmoNativeHost() = default;
++
++    virtual bool initialize(const QSize &size, const QString &title) = 0;
++    virtual void shutdown() = 0;
++    virtual void pumpEvents(QCosmoNativeEventSink *sink) = 0;
++    virtual void blit(const QImage &image, const QRegion &region) = 0;
++    virtual QString errorString() const = 0;
++
++    static QCosmoNativeHost *create();
++};
++
++QT_END_NAMESPACE
++
++#endif // QCOSMONATIVEHOST_H
+diff --git a/src/plugins/platforms/cosmonative/qcosmonativeintegration.cpp b/src/plugins/platforms/cosmonative/qcosmonativeintegration.cpp
+new file mode 100644
+index 00000000000..caaf7a1fb28
+--- /dev/null
++++ b/src/plugins/platforms/cosmonative/qcosmonativeintegration.cpp
+@@ -0,0 +1,98 @@
++// Copyright (C) 2026
++// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
++
++#include "qcosmonativeintegration.h"
++#include "qcosmonativescreen.h"
++
++#include <QtFbSupport/private/qfbbackingstore_p.h>
++#include <QtFbSupport/private/qfbwindow_p.h>
++#include <QtGui/private/qdesktopunixservices_p.h>
++#include <QtGui/private/qgenericunixeventdispatcher_p.h>
++#include <QtGui/private/qgenericunixfontdatabase_p.h>
++#include <private/qinputdevicemanager_p_p.h>
++#include <qpa/qplatforminputcontextfactory_p.h>
++#include <qpa/qwindowsysteminterface.h>
++#include <QtGui/private/qguiapplication_p.h>
++
++QT_BEGIN_NAMESPACE
++
++QCosmoNativeIntegration::QCosmoNativeIntegration(const QStringList &paramList)
++    : m_primaryScreen(new QCosmoNativeScreen(paramList)),
++      m_fontDb(new QGenericUnixFontDatabase)
++{
++}
++
++QCosmoNativeIntegration::~QCosmoNativeIntegration()
++{
++    QWindowSystemInterface::handleScreenRemoved(m_primaryScreen);
++}
++
++void QCosmoNativeIntegration::initialize()
++{
++    if (m_primaryScreen->initialize())
++        QWindowSystemInterface::handleScreenAdded(m_primaryScreen);
++    else
++        qWarning("cosmonative: Failed to initialize screen");
++
++    m_inputContext = QPlatformInputContextFactory::create();
++    m_nativeInterface.reset(new QPlatformNativeInterface);
++
++    QInputDeviceManagerPrivate::get(QGuiApplicationPrivate::inputDeviceManager())->setDeviceCount(
++            QInputDeviceManager::DeviceTypePointer, 1);
++    QInputDeviceManagerPrivate::get(QGuiApplicationPrivate::inputDeviceManager())->setDeviceCount(
++            QInputDeviceManager::DeviceTypeKeyboard, 1);
++}
++
++bool QCosmoNativeIntegration::hasCapability(QPlatformIntegration::Capability cap) const
++{
++    switch (cap) {
++    case ThreadedPixmaps:
++        return true;
++    case WindowManagement:
++        return false;
++    case RhiBasedRendering:
++        return false;
++    default:
++        return QPlatformIntegration::hasCapability(cap);
++    }
++}
++
++QPlatformBackingStore *QCosmoNativeIntegration::createPlatformBackingStore(QWindow *window) const
++{
++    return new QFbBackingStore(window);
++}
++
++QPlatformWindow *QCosmoNativeIntegration::createPlatformWindow(QWindow *window) const
++{
++    return new QFbWindow(window);
++}
++
++QAbstractEventDispatcher *QCosmoNativeIntegration::createEventDispatcher() const
++{
++    return createUnixEventDispatcher();
++}
++
++QList<QPlatformScreen *> QCosmoNativeIntegration::screens() const
++{
++    return { m_primaryScreen };
++}
++
++QPlatformFontDatabase *QCosmoNativeIntegration::fontDatabase() const
++{
++    return m_fontDb.data();
++}
++
++QPlatformServices *QCosmoNativeIntegration::services() const
++{
++    if (m_services.isNull())
++        m_services.reset(new QDesktopUnixServices);
++
++    return m_services.data();
++}
++
++QPlatformNativeInterface *QCosmoNativeIntegration::nativeInterface() const
++{
++    return m_nativeInterface.data();
++}
++
++QT_END_NAMESPACE
+diff --git a/src/plugins/platforms/cosmonative/qcosmonativeintegration.h b/src/plugins/platforms/cosmonative/qcosmonativeintegration.h
+new file mode 100644
+index 00000000000..697ac6f44d8
+--- /dev/null
++++ b/src/plugins/platforms/cosmonative/qcosmonativeintegration.h
+@@ -0,0 +1,46 @@
++// Copyright (C) 2026
++// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
++
++#ifndef QCOSMONATIVEINTEGRATION_H
++#define QCOSMONATIVEINTEGRATION_H
++
++#include <qpa/qplatformintegration.h>
++#include <qpa/qplatformnativeinterface.h>
++
++QT_BEGIN_NAMESPACE
++
++class QAbstractEventDispatcher;
++class QCosmoNativeScreen;
++
++class QCosmoNativeIntegration : public QPlatformIntegration
++{
++public:
++    explicit QCosmoNativeIntegration(const QStringList &paramList);
++    ~QCosmoNativeIntegration() override;
++
++    void initialize() override;
++    bool hasCapability(QPlatformIntegration::Capability cap) const override;
++
++    QPlatformWindow *createPlatformWindow(QWindow *window) const override;
++    QPlatformBackingStore *createPlatformBackingStore(QWindow *window) const override;
++
++    QAbstractEventDispatcher *createEventDispatcher() const override;
++
++    QPlatformFontDatabase *fontDatabase() const override;
++    QPlatformServices *services() const override;
++    QPlatformInputContext *inputContext() const override { return m_inputContext; }
++    QPlatformNativeInterface *nativeInterface() const override;
++
++    QList<QPlatformScreen *> screens() const;
++
++private:
++    QCosmoNativeScreen *m_primaryScreen = nullptr;
++    QPlatformInputContext *m_inputContext = nullptr;
++    QScopedPointer<QPlatformFontDatabase> m_fontDb;
++    mutable QScopedPointer<QPlatformServices> m_services;
++    QScopedPointer<QPlatformNativeInterface> m_nativeInterface;
++};
++
++QT_END_NAMESPACE
++
++#endif // QCOSMONATIVEINTEGRATION_H
+diff --git a/src/plugins/platforms/cosmonative/qcosmonativescreen.cpp b/src/plugins/platforms/cosmonative/qcosmonativescreen.cpp
+new file mode 100644
+index 00000000000..c5306431e4b
+--- /dev/null
++++ b/src/plugins/platforms/cosmonative/qcosmonativescreen.cpp
+@@ -0,0 +1,174 @@
++// Copyright (C) 2026
++// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
++
++#include "qcosmonativescreen.h"
++
++#include <QtCore/QCoreApplication>
++#include <QtCore/QRegularExpression>
++#include <QtFbSupport/private/qfbcursor_p.h>
++#include <QtFbSupport/private/qfbwindow_p.h>
++#include <QtGui/QWindow>
++#include <qpa/qwindowsysteminterface.h>
++
++QT_BEGIN_NAMESPACE
++
++using namespace Qt::StringLiterals;
++
++QCosmoNativeScreen::QCosmoNativeScreen(const QStringList &args)
++    : m_args(args)
++{
++}
++
++QCosmoNativeScreen::~QCosmoNativeScreen()
++{
++    if (m_host)
++        m_host->shutdown();
++}
++
++bool QCosmoNativeScreen::initialize()
++{
++    QRegularExpression sizeRx("size=(\\d+)x(\\d+)"_L1);
++    QRegularExpression mmSizeRx("mmsize=(?<width>(\\d*\\.)?\\d+)x(?<height>(\\d*\\.)?\\d+)"_L1);
++
++    mGeometry = QRect(0, 0, 1024, 768);
++    mFormat = QImage::Format_ARGB32_Premultiplied;
++    mDepth = 32;
++    mPhysicalSize = QSizeF(mGeometry.width() / 96. * 25.4, mGeometry.height() / 96. * 25.4);
++
++    for (const QString &arg : std::as_const(m_args)) {
++        QRegularExpressionMatch match;
++        if (arg.contains(sizeRx, &match)) {
++            mGeometry.setSize(QSize(match.captured(1).toInt(), match.captured(2).toInt()));
++        } else if (arg.contains(mmSizeRx, &match)) {
++            mPhysicalSize = QSizeF(match.captured("width").toDouble(),
++                                   match.captured("height").toDouble());
++        }
++    }
++
++    m_host.reset(QCosmoNativeHost::create());
++    if (!m_host) {
++        qWarning("cosmonative: no native host is available on this OS");
++        return false;
++    }
++
++    if (!m_host->initialize(mGeometry.size(), "Fiamy"_L1)) {
++        qWarning("cosmonative: failed to initialize native host: %s",
++                 qPrintable(m_host->errorString()));
++        return false;
++    }
++
++    QFbScreen::initializeCompositor();
++
++#if QT_CONFIG(cursor)
++    mCursor = new QFbCursor(this);
++#endif
++
++    m_pumpTimer.reset(new QTimer(this));
++    QObject::connect(m_pumpTimer.data(), &QTimer::timeout, this, [this]() {
++        if (m_host)
++            m_host->pumpEvents(this);
++    });
++    m_pumpTimer->start(8);
++
++    return true;
++}
++
++QRegion QCosmoNativeScreen::doRedraw()
++{
++    const QRegion touched = QFbScreen::doRedraw();
++    if (!touched.isEmpty() && m_host)
++        m_host->blit(mScreenImage, touched);
++    return touched;
++}
++
++QPixmap QCosmoNativeScreen::grabWindow(WId wid, int x, int y, int width, int height) const
++{
++    if (!wid) {
++        if (width < 0)
++            width = mScreenImage.width() - x;
++        if (height < 0)
++            height = mScreenImage.height() - y;
++        return QPixmap::fromImage(mScreenImage).copy(x, y, width, height);
++    }
++
++    QFbWindow *window = windowForId(wid);
++    if (window) {
++        const QRect geom = window->geometry();
++        if (width < 0)
++            width = geom.width() - x;
++        if (height < 0)
++            height = geom.height() - y;
++        QRect rect(geom.topLeft() + QPoint(x, y), QSize(width, height));
++        rect &= window->geometry();
++        return QPixmap::fromImage(mScreenImage).copy(rect);
++    }
++
++    return QPixmap();
++}
++
++QFbScreen::Flags QCosmoNativeScreen::flags() const
++{
++    return QFbScreen::DontForceFirstWindowToFullScreen;
++}
++
++QPointF QCosmoNativeScreen::localPositionForWindow(QWindow *window,
++                                                  const QPointF &screenPosition) const
++{
++    if (!window)
++        return screenPosition;
++    return screenPosition - QPointF(window->geometry().topLeft());
++}
++
++void QCosmoNativeScreen::handleHostClose()
++{
++    QCoreApplication::quit();
++}
++
++void QCosmoNativeScreen::handleHostMouse(const QPointF &position, Qt::MouseButtons buttons,
++                                         Qt::MouseButton changedButton, QEvent::Type type)
++{
++    m_buttons = buttons;
++
++    QWindow *window = topLevelAt(position.toPoint());
++    if (!window)
++        window = topWindow();
++
++    const QPointF local = localPositionForWindow(window, position);
++    QWindowSystemInterface::handleMouseEvent(window, local, position, buttons, changedButton,
++                                             type, Qt::NoModifier);
++}
++
++void QCosmoNativeScreen::handleHostWheel(const QPointF &position, const QPoint &angleDelta)
++{
++    QWindow *window = topLevelAt(position.toPoint());
++    if (!window)
++        window = topWindow();
++
++    const QPointF local = localPositionForWindow(window, position);
++    QWindowSystemInterface::handleWheelEvent(window, local, position, QPoint(), angleDelta,
++                                             Qt::NoModifier);
++}
++
++void QCosmoNativeScreen::handleHostKey(QEvent::Type type, int key,
++                                       Qt::KeyboardModifiers modifiers, const QString &text)
++{
++    QWindow *window = topWindow();
++    QWindowSystemInterface::handleKeyEvent(window, type, key, modifiers, text);
++}
++
++void QCosmoNativeScreen::handleHostResize(const QSize &size)
++{
++    if (!size.isValid() || size.isEmpty() || size == mGeometry.size())
++        return;
++
++    setGeometry(QRect(mGeometry.topLeft(), size));
++
++    if (QWindow *window = topWindow()) {
++        const QRect windowGeometry(window->position(), size);
++        if (window->handle())
++            window->handle()->setGeometry(windowGeometry);
++        QWindowSystemInterface::handleExposeEvent(window, QRect(QPoint(0, 0), size));
++    }
++}
++
++QT_END_NAMESPACE
+diff --git a/src/plugins/platforms/cosmonative/qcosmonativescreen.h b/src/plugins/platforms/cosmonative/qcosmonativescreen.h
+new file mode 100644
+index 00000000000..8d28b14ebbe
+--- /dev/null
++++ b/src/plugins/platforms/cosmonative/qcosmonativescreen.h
+@@ -0,0 +1,44 @@
++// Copyright (C) 2026
++// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
++
++#ifndef QCOSMONATIVESCREEN_H
++#define QCOSMONATIVESCREEN_H
++
++#include "qcosmonativehost.h"
++
++#include <QtCore/QTimer>
++#include <QtFbSupport/private/qfbscreen_p.h>
++
++QT_BEGIN_NAMESPACE
++
++class QCosmoNativeScreen : public QFbScreen, public QCosmoNativeEventSink
++{
++public:
++    explicit QCosmoNativeScreen(const QStringList &args);
++    ~QCosmoNativeScreen() override;
++
++    bool initialize() override;
++    QRegion doRedraw() override;
++    QPixmap grabWindow(WId wid, int x, int y, int width, int height) const override;
++    Flags flags() const override;
++
++    void handleHostClose() override;
++    void handleHostMouse(const QPointF &position, Qt::MouseButtons buttons,
++                         Qt::MouseButton changedButton, QEvent::Type type) override;
++    void handleHostWheel(const QPointF &position, const QPoint &angleDelta) override;
++    void handleHostKey(QEvent::Type type, int key, Qt::KeyboardModifiers modifiers,
++                       const QString &text) override;
++    void handleHostResize(const QSize &size) override;
++
++private:
++    QPointF localPositionForWindow(QWindow *window, const QPointF &screenPosition) const;
++
++    QStringList m_args;
++    QScopedPointer<QCosmoNativeHost> m_host;
++    QScopedPointer<QTimer> m_pumpTimer;
++    Qt::MouseButtons m_buttons = Qt::NoButton;
++};
++
++QT_END_NAMESPACE
++
++#endif // QCOSMONATIVESCREEN_H
+diff --git a/src/plugins/platforms/vnc/qvncclient.cpp b/src/plugins/platforms/vnc/qvncclient.cpp
+index b3aafd01948..47cbcad0399 100644
+--- a/src/plugins/platforms/vnc/qvncclient.cpp
++++ b/src/plugins/platforms/vnc/qvncclient.cpp
+@@ -214,11 +214,29 @@ void QVncClient::readClient()
+                     quint32 auth = htonl(1);
+                     m_clientSocket->write((char *) &auth, sizeof(auth));
+                     m_state = Init;
++                } else {
++                    // RFB 3.7/3.8 clients expect a security type list before
++                    // sending ClientInit. Offer only "None", matching the
++                    // historical RFB 3.3 behavior above.
++                    const char securityTypes[] = { 1, 1 };
++                    m_clientSocket->write(securityTypes, sizeof(securityTypes));
++                    m_state = Authentication;
+                 }
+             }
+             break;
+         case Authentication:
++            if (m_clientSocket->bytesAvailable() >= 1) {
++                quint8 securityType = 0;
++                m_clientSocket->read(reinterpret_cast<char *>(&securityType), 1);
++                if (securityType != 1) {
++                    discardClient();
++                    return;
++                }
+ 
++                quint32 result = htonl(0);
++                m_clientSocket->write(reinterpret_cast<char *>(&result), sizeof(result));
++                m_state = Init;
++            }
+             break;
+         case Init:
+             if (m_clientSocket->bytesAvailable() >= 1) {

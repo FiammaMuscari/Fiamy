@@ -1,0 +1,1167 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index d80a573fb..20db8b590 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -26,8 +26,17 @@ find_package(Qt6 ${PROJECT_VERSION} QUIET CONFIG
+         Network
+         Svg
+         Widgets
+-        Quick
++        QmlIntegration
+         Qml
++        QmlModels
++        QmlWorkerScript
++        QmlMeta
++        QmlPrivate
++        QmlModelsPrivate
++        QmlWorkerScriptPrivate
++        QmlMetaPrivate
++        Quick
++        QuickPrivate
+         Test
+         QuickTest
+         QuickControls2
+@@ -35,6 +44,17 @@ find_package(Qt6 ${PROJECT_VERSION} QUIET CONFIG
+         OpenGLPrivate
+         Concurrent)
+ 
++find_package(Qt6QmlTools REQUIRED CONFIG
++    PATHS /opt/homebrew
++    NO_DEFAULT_PATH
++    NO_CMAKE_FIND_ROOT_PATH
++)
++find_package(Qt6ShaderTools REQUIRED CONFIG
++    PATHS /opt/homebrew/Cellar/qtshadertools/6.10.2 /opt/homebrew
++    NO_DEFAULT_PATH
++    NO_CMAKE_FIND_ROOT_PATH
++)
++
+ if(NOT TARGET Qt::Gui)
+     message(NOTICE "Skipping the build as the condition \"TARGET Qt::Gui\" is not met.")
+     return()
+diff --git a/src/multimedia/CMakeLists.txt b/src/multimedia/CMakeLists.txt
+index e40a04117..176e2b03f 100644
+--- a/src/multimedia/CMakeLists.txt
++++ b/src/multimedia/CMakeLists.txt
+@@ -262,6 +262,14 @@ qt_internal_extend_target(Multimedia CONDITION QT_FEATURE_pulseaudio
+         WrapPulseAudio::WrapPulseAudio
+ )
+ 
++qt_internal_extend_target(Multimedia CONDITION COSMOPOLITAN
++    SOURCES
++        cosmoaudio/qcosmoaudiodevices.cpp cosmoaudio/qcosmoaudiodevices_p.h
++        cosmoaudio/qcosmoaudiosink.cpp cosmoaudio/qcosmoaudiosink_p.h
++    INCLUDE_DIRECTORIES
++        cosmoaudio
++)
++
+ qt_internal_extend_target(Multimedia CONDITION ANDROID
+     SOURCES
+         android/qandroidaudiosource.cpp android/qandroidaudiosource_p.h
+@@ -280,7 +288,7 @@ if(ANDROID)
+     )
+ endif()
+ 
+-qt_internal_extend_target(Multimedia CONDITION LINUX OR ANDROID
++qt_internal_extend_target(Multimedia CONDITION (LINUX OR ANDROID) AND NOT COSMOPOLITAN
+     SOURCES
+         audio/qautoresetevent_linux_p.h audio/qautoresetevent_linux.cpp
+ )
+@@ -525,5 +533,3 @@ qt_copy_or_install(FILES
+     DESTINATION ${ios_prf_install_dir}
+ )
+ 
+-
+-
+diff --git a/src/multimedia/audio/qautoresetevent_p.h b/src/multimedia/audio/qautoresetevent_p.h
+index 554e9f0a8..b48faf232 100644
+--- a/src/multimedia/audio/qautoresetevent_p.h
++++ b/src/multimedia/audio/qautoresetevent_p.h
+@@ -19,7 +19,7 @@
+ 
+ 
+ // TODO: kqueue based implementation
+-#ifdef Q_OS_LINUX
++#if defined(Q_OS_LINUX) && !defined(__COSMOPOLITAN__)
+ #  include "qautoresetevent_linux_p.h"
+ 
+ QT_BEGIN_NAMESPACE
+diff --git a/src/multimedia/configure.cmake b/src/multimedia/configure.cmake
+index 7bb46abc6..36110b570 100644
+--- a/src/multimedia/configure.cmake
++++ b/src/multimedia/configure.cmake
+@@ -237,7 +237,7 @@ qt_feature("ffmpeg" PRIVATE
+     ENABLE INPUT_ffmpeg STREQUAL 'yes'
+     DISABLE INPUT_ffmpeg STREQUAL 'no'
+     CONDITION FFmpeg_FOUND
+-              AND (APPLE OR WIN32 OR ANDROID OR QNX OR QT_FEATURE_pulseaudio OR QT_FEATURE_pipewire)
++              AND (APPLE OR WIN32 OR ANDROID OR QNX OR COSMOPOLITAN OR QT_FEATURE_pulseaudio OR QT_FEATURE_pipewire)
+               AND QT_FEATURE_thread
+ )
+ 
+@@ -284,7 +284,7 @@ qt_configure_add_report_entry(
+     TYPE WARNING
+     MESSAGE "No backend for low level audio found."
+     CONDITION NOT QT_FEATURE_alsa AND NOT QT_FEATURE_pulseaudio AND NOT QT_FEATURE_mmrenderer AND NOT QT_FEATURE_coreaudio
+-              AND NOT WIN32 AND NOT ANDROID AND NOT WASM AND NOT QT_FEATURE_pipewire
++              AND NOT WIN32 AND NOT ANDROID AND NOT WASM AND NOT COSMOPOLITAN AND NOT QT_FEATURE_pipewire
+ )
+ 
+ qt_configure_add_report_entry(
+diff --git a/src/multimedia/cosmoaudio/qcosmoaudiodevices.cpp b/src/multimedia/cosmoaudio/qcosmoaudiodevices.cpp
+new file mode 100644
+index 000000000..a3cb28b22
+--- /dev/null
++++ b/src/multimedia/cosmoaudio/qcosmoaudiodevices.cpp
+@@ -0,0 +1,48 @@
++// Copyright (C) 2026
++// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
++
++#include "qcosmoaudiodevices_p.h"
++
++#include "qcosmoaudiosink_p.h"
++
++#include <QtMultimedia/private/qaudiodevice_p.h>
++
++#include <memory>
++
++QT_BEGIN_NAMESPACE
++
++namespace QCosmoAudio {
++
++QList<QAudioDevice> QCosmoAudioDevices::findAudioOutputs() const
++{
++    auto devicePrivate = std::make_unique<QAudioDevicePrivate>(
++            QByteArrayLiteral("cosmoaudio:default"), QAudioDevice::Output,
++            QStringLiteral("Cosmopolitan Audio"));
++
++    devicePrivate->isDefault = true;
++    devicePrivate->minimumSampleRate = 8000;
++    devicePrivate->maximumSampleRate = 192000;
++    devicePrivate->minimumChannelCount = 1;
++    devicePrivate->maximumChannelCount = 2;
++    devicePrivate->supportedSampleFormats = qAllSupportedSampleFormats();
++    devicePrivate->channelConfiguration = QAudioFormat::ChannelConfigStereo;
++
++    QAudioFormat preferred;
++    preferred.setSampleRate(44100);
++    preferred.setChannelCount(2);
++    preferred.setSampleFormat(QAudioFormat::Float);
++    devicePrivate->preferredFormat = preferred;
++
++    return { QAudioDevicePrivate::createQAudioDevice(std::move(devicePrivate)) };
++}
++
++QPlatformAudioSink *QCosmoAudioDevices::createAudioSink(const QAudioDevice &device,
++                                                        const QAudioFormat &format,
++                                                        QObject *parent)
++{
++    return new QCosmoAudioSink(device, format, parent);
++}
++
++} // namespace QCosmoAudio
++
++QT_END_NAMESPACE
+diff --git a/src/multimedia/cosmoaudio/qcosmoaudiodevices_p.h b/src/multimedia/cosmoaudio/qcosmoaudiodevices_p.h
+new file mode 100644
+index 000000000..8f27aba97
+--- /dev/null
++++ b/src/multimedia/cosmoaudio/qcosmoaudiodevices_p.h
+@@ -0,0 +1,40 @@
++// Copyright (C) 2026
++// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
++
++#ifndef QCOSMOAUDIODEVICES_P_H
++#define QCOSMOAUDIODEVICES_P_H
++
++//
++//  W A R N I N G
++//  -------------
++//
++// This file is not part of the Qt API. It exists purely as an
++// implementation detail. This header file may change from version to
++// version without notice, or even be removed.
++//
++// We mean it.
++//
++
++#include <QtMultimedia/private/qplatformaudiodevices_p.h>
++
++QT_BEGIN_NAMESPACE
++
++namespace QCosmoAudio {
++
++class QCosmoAudioDevices final : public QPlatformAudioDevices
++{
++public:
++    QLatin1String backendName() const override { return QLatin1String("cosmoaudio"); }
++
++    QPlatformAudioSink *createAudioSink(const QAudioDevice &, const QAudioFormat &,
++                                        QObject *parent) override;
++
++protected:
++    QList<QAudioDevice> findAudioOutputs() const override;
++};
++
++} // namespace QCosmoAudio
++
++QT_END_NAMESPACE
++
++#endif // QCOSMOAUDIODEVICES_P_H
+diff --git a/src/multimedia/cosmoaudio/qcosmoaudiosink.cpp b/src/multimedia/cosmoaudio/qcosmoaudiosink.cpp
+new file mode 100644
+index 000000000..dff7d0930
+--- /dev/null
++++ b/src/multimedia/cosmoaudio/qcosmoaudiosink.cpp
+@@ -0,0 +1,466 @@
++// Copyright (C) 2026
++// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
++
++#include "qcosmoaudiosink_p.h"
++
++#include <QtCore/qdebug.h>
++#include <QtCore/qspan.h>
++#include <QtMultimedia/private/qaudiohelpers_p.h>
++
++#include <algorithm>
++#include <atomic>
++#include <chrono>
++#include <cosmoaudio.h>
++#include <libc/dce.h>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <string>
++
++using QCosmoAudioOutputTapCallback = void (*)(const float *samples, int frames, int channels,
++                                              int sampleRate, void *userData);
++
++namespace {
++
++std::atomic<QCosmoAudioOutputTapCallback> g_outputTapCallback = nullptr;
++std::atomic<void *> g_outputTapUserData = nullptr;
++
++struct AudioDump
++{
++    FILE *file = nullptr;
++    std::string path;
++    int sampleRate = 0;
++    int channels = 0;
++    uint32_t framesWritten = 0;
++    uint32_t maxFrames = 0;
++    bool initialized = false;
++    bool finished = false;
++
++    void writeSamples(const float *samples, int frames, int channelCount, int rate)
++    {
++        if (finished)
++            return;
++
++        if (!initialized)
++            initialize(channelCount, rate);
++
++        if (!file || frames <= 0 || channelCount <= 0)
++            return;
++
++        const uint32_t remaining = maxFrames > framesWritten ? maxFrames - framesWritten : 0;
++        const uint32_t framesToWrite = std::min<uint32_t>(remaining, uint32_t(frames));
++        if (framesToWrite == 0) {
++            finish();
++            return;
++        }
++
++        for (uint32_t frame = 0; frame < framesToWrite; ++frame) {
++            for (int channel = 0; channel < channels; ++channel) {
++                const int sourceChannel = std::min(channel, channelCount - 1);
++                const float clamped =
++                        std::clamp(samples[qsizetype(frame) * channelCount + sourceChannel],
++                                   -1.0f, 1.0f);
++                const int16_t sample = clamped < 0.0f
++                        ? int16_t(clamped * 32768.0f)
++                        : int16_t(clamped * 32767.0f);
++                fwrite(&sample, sizeof(sample), 1, file);
++            }
++        }
++
++        framesWritten += framesToWrite;
++        if (framesWritten >= maxFrames)
++            finish();
++    }
++
++private:
++    static void writeU16(FILE *out, uint16_t value)
++    {
++        fwrite(&value, sizeof(value), 1, out);
++    }
++
++    static void writeU32(FILE *out, uint32_t value)
++    {
++        fwrite(&value, sizeof(value), 1, out);
++    }
++
++    void writeHeader(uint32_t dataBytes)
++    {
++        if (!file)
++            return;
++
++        const uint32_t byteRate = uint32_t(sampleRate * channels * int(sizeof(int16_t)));
++        const uint16_t blockAlign = uint16_t(channels * int(sizeof(int16_t)));
++
++        fseek(file, 0, SEEK_SET);
++        fwrite("RIFF", 1, 4, file);
++        writeU32(file, 36 + dataBytes);
++        fwrite("WAVE", 1, 4, file);
++        fwrite("fmt ", 1, 4, file);
++        writeU32(file, 16);
++        writeU16(file, 1);
++        writeU16(file, uint16_t(channels));
++        writeU32(file, uint32_t(sampleRate));
++        writeU32(file, byteRate);
++        writeU16(file, blockAlign);
++        writeU16(file, 16);
++        fwrite("data", 1, 4, file);
++        writeU32(file, dataBytes);
++        fseek(file, 0, SEEK_END);
++    }
++
++    void initialize(int channelCount, int rate)
++    {
++        initialized = true;
++
++        const char *dumpPath = getenv("FIAMY_AUDIO_DUMP_PATH");
++        if (!dumpPath || !*dumpPath) {
++            finished = true;
++            return;
++        }
++
++        const char *secondsEnv = getenv("FIAMY_AUDIO_DUMP_SECONDS");
++        char *end = nullptr;
++        long seconds = secondsEnv && *secondsEnv ? strtol(secondsEnv, &end, 10) : 10;
++        if (seconds <= 0 || seconds > 120 || (end && *end))
++            seconds = 10;
++
++        sampleRate = rate > 0 ? rate : 44100;
++        channels = std::clamp(channelCount, 1, 2);
++        maxFrames = uint32_t(std::min<long>(seconds * long(sampleRate), UINT32_MAX));
++        path = dumpPath;
++
++        file = fopen(path.c_str(), "wb");
++        if (!file) {
++            qWarning() << "QCosmoAudioSink: failed to open audio dump" << path.c_str();
++            finished = true;
++            return;
++        }
++
++        writeHeader(0);
++        qDebug() << "QCosmoAudioSink: writing audio dump" << path.c_str()
++                 << "seconds=" << seconds
++                 << "sampleRate=" << sampleRate
++                 << "channels=" << channels;
++    }
++
++    void finish()
++    {
++        if (!file) {
++            finished = true;
++            return;
++        }
++
++        const uint32_t dataBytes = framesWritten * uint32_t(channels) * uint32_t(sizeof(int16_t));
++        writeHeader(dataBytes);
++        fclose(file);
++        file = nullptr;
++        finished = true;
++        qDebug() << "QCosmoAudioSink: finished audio dump" << path.c_str()
++                 << "frames=" << framesWritten;
++    }
++};
++
++AudioDump &audioDump()
++{
++    static AudioDump dump;
++    return dump;
++}
++
++} // namespace
++
++extern "C" void qcosmoaudio_set_output_tap(QCosmoAudioOutputTapCallback callback, void *userData)
++{
++    g_outputTapUserData.store(userData, std::memory_order_release);
++    g_outputTapCallback.store(callback, std::memory_order_release);
++}
++
++QT_BEGIN_NAMESPACE
++
++namespace QCosmoAudio {
++
++namespace {
++
++constexpr int defaultPeriodFrames = 1024;
++constexpr int defaultXnuPeriodFrames = 8192;
++constexpr int minPeriodFrames = 256;
++constexpr int maxPeriodFrames = 8192;
++
++QSpan<std::byte> bytesForFloats(std::vector<float> &buffer, qsizetype samples)
++{
++    return { reinterpret_cast<std::byte *>(buffer.data()), samples * qsizetype(sizeof(float)) };
++}
++
++} // namespace
++
++QCosmoAudioSinkStream::QCosmoAudioSinkStream(QAudioDevice device, const QAudioFormat &format,
++                                             std::optional<qsizetype> ringbufferSize,
++                                             QCosmoAudioSink *parent, float volume,
++                                             std::optional<int32_t> hardwareBufferSize,
++                                             AudioEndpointRole)
++    : QPlatformAudioSinkStream(std::move(device), format, ringbufferSize, hardwareBufferSize,
++                               volume),
++      m_parent(parent)
++{
++    m_channels = std::clamp(format.channelCount(), 1, 2);
++    const int fallbackPeriodFrames = IsXnu() ? defaultXnuPeriodFrames : defaultPeriodFrames;
++    m_periodFrames = std::clamp(hardwareBufferSize.value_or(fallbackPeriodFrames), minPeriodFrames,
++                                maxPeriodFrames);
++}
++
++QCosmoAudioSinkStream::~QCosmoAudioSinkStream()
++{
++    stop(ShutdownPolicy::DiscardRingbuffer);
++}
++
++bool QCosmoAudioSinkStream::open()
++{
++    if (m_audio)
++        return true;
++
++    CosmoAudioOpenOptions options;
++    std::memset(&options, 0, sizeof(options));
++    options.sizeofThis = sizeof(options);
++    options.deviceType = kCosmoAudioDeviceTypePlayback;
++    options.sampleRate = m_format.sampleRate() > 0 ? m_format.sampleRate() : 44100;
++    options.channels = m_channels;
++    options.bufferFrames = IsXnu()
++            ? std::max(m_periodFrames * 4, options.sampleRate / 2)
++            : std::max(m_periodFrames * 4, 1024);
++    options.debugLog = 0;
++
++    const int status = cosmoaudio_open(&m_audio, &options);
++    if (status != COSMOAUDIO_SUCCESS) {
++        qWarning() << "QCosmoAudioSink: cosmoaudio_open failed:" << status;
++        m_audio = nullptr;
++        return false;
++    }
++
++    m_outputBuffer.resize(qsizetype(m_periodFrames) * m_channels);
++    m_sampleRate = m_format.sampleRate() > 0 ? m_format.sampleRate() : options.sampleRate;
++    m_prefillFramesRemaining = IsXnu() ? std::max(m_periodFrames * 2, m_sampleRate / 4) : 0;
++    return true;
++}
++
++bool QCosmoAudioSinkStream::start(QIODevice *device)
++{
++    Q_ASSERT(thread()->isCurrentThread());
++    setQIODevice(device);
++    pullFromQIODevice();
++    createQIODeviceConnections(device);
++    return startWorker();
++}
++
++bool QCosmoAudioSinkStream::start(AudioCallback &&callback)
++{
++    Q_ASSERT(thread()->isCurrentThread());
++    m_audioCallback = std::move(callback);
++    return startWorker();
++}
++
++QIODevice *QCosmoAudioSinkStream::start()
++{
++    auto *writer = createRingbufferWriterDevice();
++    setIdleState(true);
++    return start(writer) ? writer : nullptr;
++}
++
++bool QCosmoAudioSinkStream::startWorker()
++{
++    if (!m_audio || m_worker.joinable())
++        return false;
++
++    m_nextWriteTime = std::chrono::steady_clock::now();
++    m_worker = std::thread([this] {
++        workerLoop();
++    });
++    return true;
++}
++
++void QCosmoAudioSinkStream::stop(ShutdownPolicy policy)
++{
++    requestStop();
++    disconnectQIODeviceConnections();
++
++    if (m_worker.joinable())
++        m_worker.join();
++
++    if (policy == ShutdownPolicy::DrainRingbuffer && m_audio)
++        cosmoaudio_flush(m_audio);
++
++    closeAudio();
++}
++
++void QCosmoAudioSinkStream::suspend()
++{
++    m_suspended.store(true, std::memory_order_release);
++}
++
++void QCosmoAudioSinkStream::resume()
++{
++    m_suspended.store(false, std::memory_order_release);
++}
++
++void QCosmoAudioSinkStream::updateStreamIdle(bool idle)
++{
++    if (m_parent)
++        m_parent->updateStreamIdle(idle);
++}
++
++void QCosmoAudioSinkStream::workerLoop()
++{
++    using namespace std::chrono_literals;
++
++    while (!isStopRequested(std::memory_order_acquire)) {
++        if (m_suspended.load(std::memory_order_acquire)) {
++            std::this_thread::sleep_for(10ms);
++            continue;
++        }
++
++        int writeFrames = m_periodFrames;
++        const int pollStatus = cosmoaudio_poll(m_audio, nullptr, &writeFrames);
++        if (pollStatus != COSMOAUDIO_SUCCESS) {
++            reportIOError();
++            return;
++        }
++
++        int frames = std::clamp(writeFrames, 0, m_periodFrames);
++        if (!m_audioCallback) {
++            const int readableFrames = ringbufferReadableFrames();
++            if (readableFrames <= 0) {
++                std::this_thread::sleep_for(1ms);
++                continue;
++            }
++            frames = std::min(frames, readableFrames);
++        }
++        if (frames <= 0) {
++            std::this_thread::sleep_for(IsXnu() ? 2ms : 1ms);
++            continue;
++        }
++
++        const bool ok = m_audioCallback ? fillFromCallback(frames) : fillFromRingbuffer(frames);
++        if (!ok) {
++            reportIOError();
++            return;
++        }
++
++        notifyOutputTap(frames);
++
++        const int writeStatus = cosmoaudio_write(m_audio, m_outputBuffer.data(), frames);
++        if (writeStatus < 0) {
++            reportIOError();
++            return;
++        }
++
++        paceOutput(frames);
++    }
++}
++
++int QCosmoAudioSinkStream::ringbufferReadableFrames()
++{
++    const int samples = visitRingbuffer([](auto &ringbuffer) {
++        return ringbuffer.used();
++    });
++    return m_channels > 0 ? samples / m_channels : 0;
++}
++
++void QCosmoAudioSinkStream::paceOutput(int frames)
++{
++    if (!IsXnu() || m_sampleRate <= 0)
++        return;
++
++    const auto now = std::chrono::steady_clock::now();
++    const auto frameDuration = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
++            std::chrono::duration<double>(double(frames) / double(m_sampleRate)));
++
++    if (m_prefillFramesRemaining > 0) {
++        m_prefillFramesRemaining -= frames;
++        m_nextWriteTime += frameDuration;
++        return;
++    }
++
++    if (m_nextWriteTime > now)
++        std::this_thread::sleep_until(m_nextWriteTime);
++
++    const auto nextFrameTime = std::chrono::steady_clock::now();
++    m_nextWriteTime = std::max(m_nextWriteTime, nextFrameTime) + frameDuration;
++}
++
++void QCosmoAudioSinkStream::notifyOutputTap(int frames)
++{
++    audioDump().writeSamples(m_outputBuffer.data(), frames, m_channels, m_sampleRate);
++
++    const auto callback = g_outputTapCallback.load(std::memory_order_acquire);
++    if (!callback)
++        return;
++
++    callback(m_outputBuffer.data(), frames, m_channels, m_sampleRate,
++             g_outputTapUserData.load(std::memory_order_acquire));
++}
++
++bool QCosmoAudioSinkStream::fillFromRingbuffer(int frames)
++{
++    const qsizetype samples = qsizetype(frames) * m_channels;
++    std::fill_n(m_outputBuffer.data(), samples, 0.0f);
++    const uint64_t consumedFrames =
++            QPlatformAudioSinkStream::process(bytesForFloats(m_outputBuffer, samples), frames,
++                                              NativeSampleFormat::float32_t);
++    if (consumedFrames < uint64_t(frames)) {
++        const uint64_t missingFrames = uint64_t(frames) - consumedFrames;
++        m_shortReadCount++;
++        m_shortReadFrames += missingFrames;
++
++        const auto now = std::chrono::steady_clock::now();
++        if (m_lastShortReadLog.time_since_epoch().count() == 0
++            || now - m_lastShortReadLog > std::chrono::seconds(2)) {
++            qWarning() << "QCosmoAudioSink: output underrun"
++                       << "missingFrames=" << missingFrames
++                       << "totalUnderruns=" << m_shortReadCount
++                       << "totalMissingFrames=" << m_shortReadFrames;
++            m_lastShortReadLog = now;
++        }
++    }
++    return true;
++}
++
++bool QCosmoAudioSinkStream::fillFromCallback(int frames)
++{
++    const qsizetype byteCount = m_format.bytesForFrames(frames);
++    m_callbackBuffer.resize(byteCount);
++    auto callbackBytes =
++            QSpan<std::byte>(reinterpret_cast<std::byte *>(m_callbackBuffer.data()), byteCount);
++
++    QtMultimediaPrivate::runAudioCallback(*m_audioCallback, callbackBytes, m_format, volume());
++
++    const qsizetype samples = qsizetype(frames) * m_channels;
++    std::fill_n(m_outputBuffer.data(), samples, 0.0f);
++    QAudioHelperInternal::convertSampleFormat(
++            callbackBytes, QAudioHelperInternal::toNativeSampleFormat(m_format.sampleFormat()),
++            bytesForFloats(m_outputBuffer, samples), NativeSampleFormat::float32_t);
++    return true;
++}
++
++void QCosmoAudioSinkStream::reportIOError()
++{
++    requestStop();
++    invokeOnAppThread([this] {
++        handleIOError(m_parent);
++    });
++}
++
++void QCosmoAudioSinkStream::closeAudio()
++{
++    if (!m_audio)
++        return;
++
++    cosmoaudio_close(m_audio);
++    m_audio = nullptr;
++}
++
++QCosmoAudioSink::QCosmoAudioSink(QAudioDevice device, const QAudioFormat &format, QObject *parent)
++    : BaseClass(std::move(device), format, parent)
++{
++}
++
++} // namespace QCosmoAudio
++
++QT_END_NAMESPACE
+diff --git a/src/multimedia/cosmoaudio/qcosmoaudiosink_p.h b/src/multimedia/cosmoaudio/qcosmoaudiosink_p.h
+new file mode 100644
+index 000000000..367c0bb9f
+--- /dev/null
++++ b/src/multimedia/cosmoaudio/qcosmoaudiosink_p.h
+@@ -0,0 +1,106 @@
++// Copyright (C) 2026
++// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
++
++#ifndef QCOSMOAUDIOSINK_P_H
++#define QCOSMOAUDIOSINK_P_H
++
++//
++//  W A R N I N G
++//  -------------
++//
++// This file is not part of the Qt API. It exists purely as an
++// implementation detail. This header file may change from version to
++// version without notice, or even be removed.
++//
++// We mean it.
++//
++
++#include <QtCore/qbytearray.h>
++#include <QtCore/qtclasshelpermacros.h>
++#include <QtMultimedia/private/qaudio_platform_implementation_support_p.h>
++#include <QtMultimedia/private/qaudiosystem_p.h>
++
++#include <atomic>
++#include <chrono>
++#include <cstdint>
++#include <memory>
++#include <optional>
++#include <thread>
++#include <vector>
++
++struct CosmoAudio;
++
++QT_BEGIN_NAMESPACE
++
++namespace QCosmoAudio {
++
++using namespace QtMultimediaPrivate;
++
++class QCosmoAudioSink;
++
++struct QCosmoAudioSinkStream final : QPlatformAudioSinkStream
++{
++    using SinkType = QCosmoAudioSink;
++
++    QCosmoAudioSinkStream(QAudioDevice, const QAudioFormat &format,
++                          std::optional<qsizetype> ringbufferSize, QCosmoAudioSink *parent,
++                          float volume, std::optional<int32_t> hardwareBufferSize,
++                          AudioEndpointRole);
++    ~QCosmoAudioSinkStream();
++
++    using QPlatformAudioSinkStream::bytesFree;
++    using QPlatformAudioSinkStream::processedDuration;
++    using QPlatformAudioSinkStream::ringbufferSizeInBytes;
++    using QPlatformAudioSinkStream::setVolume;
++
++    bool open();
++    bool start(QIODevice *device);
++    bool start(AudioCallback &&callback);
++    QIODevice *start();
++    void stop(ShutdownPolicy);
++    void suspend();
++    void resume();
++
++private:
++    void updateStreamIdle(bool idle) override;
++    bool startWorker();
++    void workerLoop();
++    void paceOutput(int frames);
++    int ringbufferReadableFrames();
++    void notifyOutputTap(int frames);
++    bool fillFromRingbuffer(int frames);
++    bool fillFromCallback(int frames);
++    void reportIOError();
++    void closeAudio();
++
++    QCosmoAudioSink *m_parent = nullptr;
++    CosmoAudio *m_audio = nullptr;
++    std::optional<AudioCallback> m_audioCallback;
++    std::thread m_worker;
++    std::atomic_bool m_suspended = false;
++    std::vector<float> m_outputBuffer;
++    QByteArray m_callbackBuffer;
++    std::chrono::steady_clock::time_point m_nextWriteTime;
++    std::chrono::steady_clock::time_point m_lastShortReadLog;
++    uint64_t m_shortReadCount = 0;
++    uint64_t m_shortReadFrames = 0;
++    int m_prefillFramesRemaining = 0;
++    int m_periodFrames = 1024;
++    int m_channels = 2;
++    int m_sampleRate = 44100;
++};
++
++class QCosmoAudioSink final
++    : public QPlatformAudioSinkImplementation<QCosmoAudioSinkStream, QCosmoAudioSink>
++{
++    using BaseClass = QPlatformAudioSinkImplementation<QCosmoAudioSinkStream, QCosmoAudioSink>;
++
++public:
++    QCosmoAudioSink(QAudioDevice device, const QAudioFormat &format, QObject *parent);
++};
++
++} // namespace QCosmoAudio
++
++QT_END_NAMESPACE
++
++#endif // QCOSMOAUDIOSINK_P_H
+diff --git a/src/multimedia/platform/qplatformaudiodevices.cpp b/src/multimedia/platform/qplatformaudiodevices.cpp
+index f5221c2a0..198f755aa 100644
+--- a/src/multimedia/platform/qplatformaudiodevices.cpp
++++ b/src/multimedia/platform/qplatformaudiodevices.cpp
+@@ -8,6 +8,9 @@
+ #include <QtMultimedia/qmediadevices.h>
+ #include <QtMultimedia/private/qaudiosystem_p.h>
+ 
++#if defined(__COSMOPOLITAN__)
++#  include <QtMultimedia/private/qcosmoaudiodevices_p.h>
++#endif
+ #if defined(Q_OS_ANDROID)
+ #  include <QtMultimedia/private/qandroidaudiodevices_p.h>
+ #endif
+@@ -37,6 +40,9 @@ QT_BEGIN_NAMESPACE
+ 
+ std::unique_ptr<QPlatformAudioDevices> QPlatformAudioDevices::create()
+ {
++#ifdef __COSMOPOLITAN__
++    return std::make_unique<QCosmoAudio::QCosmoAudioDevices>();
++#endif
+ #ifdef Q_OS_DARWIN
+     return std::make_unique<QDarwinAudioDevices>();
+ #endif
+diff --git a/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegaudiorenderer.cpp b/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegaudiorenderer.cpp
+index 5ac4ae54a..688fe3d3b 100644
+--- a/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegaudiorenderer.cpp
++++ b/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegaudiorenderer.cpp
+@@ -9,6 +9,7 @@
+ #include <QtMultimedia/private/qaudiobuffer_support_p.h>
+ #include <QtMultimedia/private/qplatformaudiooutput_p.h>
+ 
++#include <QtCore/qglobal.h>
+ #include <QtCore/qloggingcategory.h>
+ 
+ #include "qffmpegaudioframeconverter_p.h"
+@@ -25,6 +26,13 @@ using namespace std::chrono_literals;
+ using namespace std::chrono;
+ 
+ namespace {
++#ifdef __COSMOPOLITAN__
++constexpr auto DesiredBufferTime = 900000us;
++constexpr auto MinDesiredBufferTime = 250000us;
++constexpr auto MaxDesiredBufferTime = 700000us;
++constexpr auto MinDesiredFreeBufferTime = 100000us;
++constexpr auto BufferLoadingMeasureTime = 800ms;
++#else
+ constexpr auto DesiredBufferTime = 110000us;
+ constexpr auto MinDesiredBufferTime = 22000us;
+ constexpr auto MaxDesiredBufferTime = 64000us;
+@@ -33,6 +41,7 @@ constexpr auto MinDesiredFreeBufferTime = 10000us;
+ // It might be changed with #ifdef, as on Linux, QPulseAudioSink has quite unstable timings,
+ // and it needs much more time to make sure that the buffer is overloaded.
+ constexpr auto BufferLoadingMeasureTime = 400ms;
++#endif
+ 
+ constexpr auto DurationBias = 2ms; // avoids extra timer events
+ 
+@@ -44,6 +53,9 @@ QAudioFormat audioFormatFromFrame(const Frame &frame)
+ 
+ } // namespace
+ 
++static void traceCosmoAudioFrame(const Frame &frame, const QAudioBuffer &buffer,
++                                 int &traceFramesLogged);
++
+ AudioRenderer::AudioRenderer(const TimeController &tc, QAudioOutput *output,
+                              QAudioBufferOutput *bufferOutput, bool pitchCompensation)
+     : Renderer(tc),
+@@ -139,9 +151,9 @@ AudioRenderer::RenderingResult AudioRenderer::pushFrameToOutput(const Frame &fra
+             return { time.count() == 0, time };
+         }
+ 
+-        m_bufferedData = {
+-            m_audioFrameConverter->convert(frame.avFrame()),
+-        };
++        QAudioBuffer convertedBuffer = m_audioFrameConverter->convert(frame.avFrame());
++        traceCosmoAudioFrame(frame, convertedBuffer, m_traceFramesLogged);
++        m_bufferedData = { std::move(convertedBuffer) };
+     }
+ 
+     if (m_bufferedData.isValid()) {
+@@ -358,6 +370,48 @@ void AudioRenderer::updateSynchronization(const SynchronizationStamp &stamp, con
+     }
+ }
+ 
++static void traceCosmoAudioFrame(const Frame &frame, const QAudioBuffer &buffer,
++                                 int &traceFramesLogged)
++{
++#ifdef __COSMOPOLITAN__
++    if (!qEnvironmentVariableIsSet("FIAMY_AUDIO_TRACE_FRAMES") || traceFramesLogged >= 90)
++        return;
++
++    ++traceFramesLogged;
++
++    int firstNonZeroSample = -1;
++    int maxAbs = 0;
++    quint32 hash = 2166136261u;
++    if (buffer.format().sampleFormat() == QAudioFormat::Int16) {
++        const auto *samples = buffer.constData<int16_t>();
++        const int sampleCount = buffer.sampleCount();
++        for (int i = 0; i < sampleCount; ++i) {
++            const int value = samples[i];
++            const int absValue = qAbs(value);
++            if (firstNonZeroSample < 0 && absValue > 1)
++                firstNonZeroSample = i;
++            maxAbs = qMax(maxAbs, absValue);
++            hash ^= quint16(value);
++            hash *= 16777619u;
++        }
++    }
++
++    qDebug() << "AudioRenderer frame"
++             << "n=" << traceFramesLogged
++             << "ptsUs=" << frame.absolutePts().get()
++             << "durationUs=" << frame.duration().get()
++             << "frames=" << buffer.frameCount()
++             << "bytes=" << buffer.byteCount()
++             << "firstNonZeroSample=" << firstNonZeroSample
++             << "maxAbs=" << maxAbs
++             << "hash=" << Qt::hex << hash << Qt::dec;
++#else
++    Q_UNUSED(frame);
++    Q_UNUSED(buffer);
++    Q_UNUSED(traceFramesLogged);
++#endif
++}
++
+ microseconds AudioRenderer::bufferLoadingTime(const SynchronizationStamp &syncStamp) const
+ {
+     Q_ASSERT(m_sink);
+diff --git a/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegaudiorenderer_p.h b/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegaudiorenderer_p.h
+index 8fa2ea7b6..f717456d6 100644
+--- a/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegaudiorenderer_p.h
++++ b/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegaudiorenderer_p.h
+@@ -127,6 +127,7 @@ private:
+     bool m_bufferOutputChanged = false;
+     bool m_drained = false;
+     bool m_firstFrameToSink = true;
++    int m_traceFramesLogged = 0;
+ 
+     // pitch compensation
+     bool m_pitchCompensation = false;
+diff --git a/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegcodeccontext.cpp b/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegcodeccontext.cpp
+index 040666a64..1cd05904f 100644
+--- a/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegcodeccontext.cpp
++++ b/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegcodeccontext.cpp
+@@ -74,6 +74,15 @@ q23::expected<CodecContext, QString> CodecContext::create(AVStream *stream,
+     else
+         decoder = QFFmpeg::findAVDecoder(stream->codecpar->codec_id);
+ 
++#ifdef __COSMOPOLITAN__
++    if (videoCodecPolicy == Sw && stream->codecpar->codec_id == AV_CODEC_ID_AAC) {
++        if (const AVCodec *fixedAac = avcodec_find_decoder_by_name("aac_fixed")) {
++            qCDebug(qLcPlaybackEngineCodec) << "using fixed-point AAC decoder";
++            decoder = Codec(fixedAac);
++        }
++    }
++#endif
++
+     if (!decoder)
+         return q23::unexpected{
+             QString(u"No %1 decoder found").arg(videoCodecPolicy == Hw ? "HW" : "SW")
+diff --git a/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegdemuxer.cpp b/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegdemuxer.cpp
+index 0d03e19c3..cbe4f4af3 100644
+--- a/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegdemuxer.cpp
++++ b/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegdemuxer.cpp
+@@ -144,6 +144,16 @@ void Demuxer::doNextStep()
+ 
+     m_demuxerRetryCount = 0;
+ 
++#ifdef __COSMOPOLITAN__
++    const int refStatus = av_packet_make_refcounted(&avPacket);
++    if (refStatus < 0) {
++        emit error(QMediaPlayer::ResourceError,
++                   QLatin1StringView("Demuxing failed to retain packet data: ")
++                           + err2str(refStatus));
++        return;
++    }
++#endif
++
+     if (streamIsRelevant) {
+         auto &streamData = streamIterator->second;
+         const AVStream *stream = m_context->streams[streamIndex];
+diff --git a/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegmediadataholder.cpp b/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegmediadataholder.cpp
+index c774f2a86..dfd4e4f23 100644
+--- a/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegmediadataholder.cpp
++++ b/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegmediadataholder.cpp
+@@ -9,6 +9,9 @@
+ #include "qiodevice.h"
+ #include "qdatetime.h"
+ #include "qloggingcategory.h"
++#include "qfile.h"
++#include "qfileinfo.h"
++#include "qtenvironmentvariables.h"
+ 
+ #include <QtMultimedia/qplaybackoptions.h>
+ 
+@@ -185,7 +188,8 @@ QPlatformMediaPlayer::TrackType MediaDataHolder::trackTypeFromMediaType(int medi
+ namespace {
+ q23::expected<AVFormatContextUPtr, MediaDataHolder::ContextError>
+ loadMedia(const QUrl &mediaUrl, QIODevice *stream, const QPlaybackOptions &playbackOptions,
+-          const std::shared_ptr<ICancelToken> &cancelToken)
++          const std::shared_ptr<ICancelToken> &cancelToken,
++          std::unique_ptr<QIODevice> *ownedStream)
+ {
+     using std::chrono::duration_cast;
+     using std::chrono::microseconds;
+@@ -195,6 +199,15 @@ loadMedia(const QUrl &mediaUrl, QIODevice *stream, const QPlaybackOptions &playb
+ 
+     AVFormatContextUPtr context{ avformat_alloc_context() };
+ 
++#ifdef __COSMOPOLITAN__
++    if (qEnvironmentVariableIsSet("QT_FFMPEG_FORCE_QIODEVICE_AVIO")
++        && !stream && mediaUrl.isLocalFile() && ownedStream) {
++        auto file = std::make_unique<QFile>(mediaUrl.toLocalFile());
++        stream = file.get();
++        *ownedStream = std::move(file);
++    }
++#endif
++
+     if (stream) {
+         if (!stream->isOpen()) {
+             if (!stream->open(QIODevice::ReadOnly))
+@@ -281,7 +294,17 @@ loadMedia(const QUrl &mediaUrl, QIODevice *stream, const QPlaybackOptions &playb
+         };
+     }
+ 
+-    ret = avformat_find_stream_info(context.get(), nullptr);
++#ifdef __COSMOPOLITAN__
++    const QString localSuffix = mediaUrl.isLocalFile()
++            ? QFileInfo(mediaUrl.toLocalFile()).suffix().toLower()
++            : QString();
++    const bool skipStreamProbe = localSuffix == u"mp4" || localSuffix == u"m4a"
++            || localSuffix == u"aac";
++    if (!skipStreamProbe)
++#endif
++    {
++        ret = avformat_find_stream_info(context.get(), nullptr);
++    }
+     if (ret < 0) {
+         return q23::unexpected{
+             MediaDataHolder::ContextError{
+@@ -290,6 +313,15 @@ loadMedia(const QUrl &mediaUrl, QIODevice *stream, const QPlaybackOptions &playb
+         };
+     }
+ 
++#ifdef __COSMOPOLITAN__
++    if (stream && !stream->isSequential() && context->pb) {
++        const int64_t seekResult = avio_seek(context->pb, 0, SEEK_SET);
++        if (seekResult < 0)
++            qCWarning(qLcMediaDataHolder)
++                    << "Could not rewind custom AVIO after probing:" << AVError(seekResult);
++    }
++#endif
++
+     if (qLcMediaDataHolder().isInfoEnabled())
+         av_dump_format(context.get(), 0, url.constData(), 0);
+ 
+@@ -303,18 +335,21 @@ MediaDataHolder::Maybe MediaDataHolder::create(const QUrl &url, QIODevice *strea
+                                                const QPlaybackOptions &options,
+                                                const std::shared_ptr<ICancelToken> &cancelToken)
+ {
+-    q23::expected context = loadMedia(url, stream, options, cancelToken);
++    std::unique_ptr<QIODevice> ownedStream;
++    q23::expected context = loadMedia(url, stream, options, cancelToken, &ownedStream);
+     if (context) {
+         // MediaDataHolder is wrapped in a shared pointer to interop with signal/slot mechanism
+         return std::make_shared<MediaDataHolder>(
+-                MediaDataHolder{ std::move(context.value()), cancelToken });
++                MediaDataHolder{ std::move(context.value()), cancelToken, std::move(ownedStream) });
+     }
+     return q23::unexpected{ context.error() };
+ }
+ 
+ MediaDataHolder::MediaDataHolder(AVFormatContextUPtr context,
+-                                 const std::shared_ptr<ICancelToken> &cancelToken)
++                                 const std::shared_ptr<ICancelToken> &cancelToken,
++                                 std::unique_ptr<QIODevice> ownedStream)
+     : m_cancelToken{ cancelToken }
++    , m_ownedStream{ std::move(ownedStream) }
+ {
+     Q_ASSERT(context);
+ 
+diff --git a/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegmediadataholder_p.h b/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegmediadataholder_p.h
+index b05822f5a..9a731ec55 100644
+--- a/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegmediadataholder_p.h
++++ b/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegmediadataholder_p.h
+@@ -16,6 +16,7 @@
+ //
+ 
+ #include <QtCore/private/qexpected_p.h>
++#include <QtCore/qiodevice.h>
+ #include <QtMultimedia/qmediametadata.h>
+ #include <QtMultimedia/qvideoframe.h>
+ #include <QtMultimedia/private/qplatformmediaplayer_p.h>
+@@ -58,7 +59,8 @@ public:
+     using StreamIndexes = std::array<int, QPlatformMediaPlayer::NTrackTypes>;
+ 
+     MediaDataHolder() = default;
+-    MediaDataHolder(AVFormatContextUPtr context, const std::shared_ptr<ICancelToken> &cancelToken);
++    MediaDataHolder(AVFormatContextUPtr context, const std::shared_ptr<ICancelToken> &cancelToken,
++                    std::unique_ptr<QIODevice> ownedStream = {});
+ 
+     static QPlatformMediaPlayer::TrackType trackTypeFromMediaType(int mediaType);
+ 
+@@ -90,6 +92,7 @@ private:
+     std::shared_ptr<ICancelToken> m_cancelToken; // NOTE: Cancel token may be accessed by
+                                                  // AVFormatContext during destruction and
+                                                  // must outlive the context object
++    std::unique_ptr<QIODevice> m_ownedStream; // Must outlive m_context when custom AVIO is used
+     AVFormatContextUPtr m_context;
+ 
+     bool m_isSeekable = false;
+diff --git a/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegstreamdecoder.cpp b/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegstreamdecoder.cpp
+index 270333a25..ddcbab73f 100644
+--- a/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegstreamdecoder.cpp
++++ b/src/plugins/multimedia/ffmpeg/playbackengine/qffmpegstreamdecoder.cpp
+@@ -4,6 +4,7 @@
+ #include "playbackengine/qffmpegstreamdecoder_p.h"
+ #include "playbackengine/qffmpegmediadataholder_p.h"
+ #include <qloggingcategory.h>
++#include <cstring>
+ 
+ QT_BEGIN_NAMESPACE
+ 
+@@ -120,6 +121,47 @@ void StreamDecoder::onFrameFound(Frame frame)
+ 
+ void StreamDecoder::decodeMedia(Packet packet)
+ {
++#ifdef __COSMOPOLITAN__
++    const AVCodecContext *codecContext = m_codecContext.context();
++    if (packet.isValid() && codecContext->codec_id == AV_CODEC_ID_PCM_S16LE) {
++        const AVPacket *avPacket = packet.avPacket();
++#if QT_FFMPEG_HAS_AV_CHANNEL_LAYOUT
++        const int channels = codecContext->ch_layout.nb_channels;
++#else
++        const int channels = codecContext->channels;
++#endif
++        const int bytesPerFrame = channels * int(sizeof(int16_t));
++        if (channels > 0 && bytesPerFrame > 0 && avPacket->size >= bytesPerFrame) {
++            auto avFrame = makeAVFrame();
++            avFrame->format = AV_SAMPLE_FMT_S16;
++            avFrame->sample_rate = codecContext->sample_rate;
++            avFrame->nb_samples = avPacket->size / bytesPerFrame;
++            setAVFrameTime(*avFrame, avPacket->pts, m_codecContext.stream()->time_base);
++#if QT_FFMPEG_HAS_FRAME_DURATION
++            avFrame->duration = avPacket->duration;
++#else
++            avFrame->pkt_duration = avPacket->duration;
++#endif
++#if QT_FFMPEG_HAS_AV_CHANNEL_LAYOUT
++            av_channel_layout_copy(&avFrame->ch_layout, &codecContext->ch_layout);
++#else
++            avFrame->channel_layout = codecContext->channel_layout;
++            avFrame->channels = codecContext->channels;
++#endif
++            const int ret = av_frame_get_buffer(avFrame.get(), 0);
++            if (ret < 0) {
++                emit error(QMediaPlayer::FormatError, err2str(ret));
++                return;
++            }
++
++            const qsizetype byteCount = qsizetype(avFrame->nb_samples) * bytesPerFrame;
++            memcpy(avFrame->data[0], avPacket->data, byteCount);
++            onFrameFound({ packet.loopOffset(), std::move(avFrame), m_codecContext, id() });
++        }
++        return;
++    }
++#endif
++
+     auto sendPacketResult = sendAVPacket(packet);
+ 
+     if (sendPacketResult == AVERROR(EAGAIN)) {

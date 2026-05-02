@@ -1,0 +1,62 @@
+diff --git a/src/qml/qml/qqml.h b/src/qml/qml/qqml.h
+index d9b8ed66..8317628f 100644
+--- a/src/qml/qml/qqml.h
++++ b/src/qml/qml/qqml.h
+@@ -995,6 +995,19 @@ inline void qmlRegisterNamespaceAndRevisions(const QMetaObject *metaObject,
+                                      classInfoMetaObject, nullptr);
+ }
+ 
++template<typename Enum>
++void qmlRegisterEnum(const char *name)
++{
++    const QMetaType metaType = QMetaType::fromType<Enum>();
++
++    metaType.id();
++
++    if constexpr (QtPrivate::IsQEnumHelper<Enum>::Value)
++        Q_UNUSED(name)
++    else
++        QMetaType::registerNormalizedTypedef(name, metaType);
++}
++
+ int Q_QML_EXPORT qmlTypeId(const char *uri, int versionMajor, int versionMinor, const char *qmlName);
+ 
+ QT_END_NAMESPACE
+diff --git a/src/3rdparty/yoga/Utils.cpp b/src/3rdparty/yoga/Utils.cpp
+index ccf8c6a0..63c3c568 100644
+--- a/src/3rdparty/yoga/Utils.cpp
++++ b/src/3rdparty/yoga/Utils.cpp
+@@ -4,6 +4,7 @@
+ // SPDX-License-Identifier: MIT
+ 
+ #include "Utils.h"
++#include <exception>
+ #include <stdexcept>
+ 
+ using namespace facebook;
+diff --git a/src/qmlcompiler/qqmljsannotation_p.h b/src/qmlcompiler/qqmljsannotation_p.h
+index 221146d0..d1bd6dea 100644
+--- a/src/qmlcompiler/qqmljsannotation_p.h
++++ b/src/qmlcompiler/qqmljsannotation_p.h
+@@ -47,7 +47,7 @@ public:
+ 
+     friend size_t qHash(const QQmlJSAnnotation &annotation, size_t seed = 0)
+     {
+-        QtPrivate::QHashCombine combine(seed);
++        QtPrivate::QHashCombine combine;
+         seed = combine(seed, annotation.name);
+ 
+         for (auto it = annotation.bindings.constBegin(); it != annotation.bindings.constEnd(); ++it) {
+diff --git a/src/qmlcompiler/qqmljsmetatypes_p.h b/src/qmlcompiler/qqmljsmetatypes_p.h
+index d76e6c24..37760db4 100644
+--- a/src/qmlcompiler/qqmljsmetatypes_p.h
++++ b/src/qmlcompiler/qqmljsmetatypes_p.h
+@@ -342,7 +342,7 @@ public:
+ 
+     friend size_t qHash(const QQmlJSMetaMethod &method, size_t seed = 0)
+     {
+-        QtPrivate::QHashCombine combine(seed);
++        QtPrivate::QHashCombine combine;
+ 
+         seed = combine(seed, method.m_name);
+         seed = combine(seed, method.m_sourceLocation);

@@ -1,12 +1,29 @@
-#include <QGuiApplication>
 #include <QQmlApplicationEngine>
+#include <QQmlContext>
 #include <QtQuickControls2>
 #include <QProcess>
 #include <QTimer>
 #include <QIcon>
+#include <QImage>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QFont>
+#include <QFontDatabase>
 #include <QQuickWindow>
 #include "audiocaptureanalyzer.h"
 #include "youtubedownloader.h"
+
+#ifdef __COSMOPOLITAN__
+#include <QApplication>
+using FiamyApplication = QApplication;
+extern "C" {
+#include <libc/dce.h>
+}
+#else
+#include <QGuiApplication>
+using FiamyApplication = QGuiApplication;
+#endif
 
 #ifdef QT_QML_DEBUG
 #include <QFileSystemWatcher>
@@ -14,12 +31,168 @@
 #include <QDebug>
 #endif
 
+#ifdef __COSMOPOLITAN__
+static bool directoryHasUsableFonts(const QString &path)
+{
+    QDir dir(path);
+    return dir.exists()
+        && !dir.entryList({ "*.ttf", "*.ttc", "*.otf", "*.dfont", "*.pfa", "*.pfb" },
+                          QDir::Files).isEmpty();
+}
+
+static void configureCosmopolitanFontDir()
+{
+    if (!qEnvironmentVariableIsEmpty("QT_QPA_FONTDIR"))
+        return;
+
+    const QStringList fontDirs = {
+        "/System/Library/Fonts/Supplemental",
+        "/System/Library/Fonts",
+        "/Library/Fonts",
+        "/usr/share/fonts/truetype/dejavu",
+        "/usr/share/fonts/truetype/liberation2",
+        "/usr/share/fonts/liberation",
+        "/usr/share/fonts/TTF",
+        "/usr/share/fonts",
+        "C:/Windows/Fonts",
+    };
+
+    for (const QString &fontDir : fontDirs) {
+        if (directoryHasUsableFonts(fontDir)) {
+            qputenv("QT_QPA_FONTDIR", QFile::encodeName(fontDir));
+            return;
+        }
+    }
+}
+
+static void configureCosmopolitanPlatform()
+{
+    if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
+        qputenv("QT_QPA_PLATFORM", "cosmonative:size=420x720");
+}
+
+static void configureCosmopolitanApplicationFont()
+{
+    const QStringList preferredFamilies = {
+        "Arial",
+        "Helvetica",
+        "SF Pro Text",
+        "DejaVu Sans",
+        "Liberation Sans",
+        "Noto Sans",
+        "Segoe UI",
+    };
+
+    const QStringList families = QFontDatabase::families();
+    for (const QString &family : preferredFamilies) {
+        if (families.contains(family, Qt::CaseInsensitive)) {
+            QGuiApplication::setFont(QFont(family, 10));
+            return;
+        }
+    }
+
+    if (!families.isEmpty())
+        QGuiApplication::setFont(QFont(families.first(), 10));
+}
+
+static int vncPortFromEnvironment()
+{
+    const QString platform = QString::fromLocal8Bit(qgetenv("QT_QPA_PLATFORM"));
+    const QStringList parts = platform.split(':');
+    for (const QString &part : parts) {
+        if (!part.startsWith("port="))
+            continue;
+
+        bool ok = false;
+        const int port = part.mid(5).toInt(&ok);
+        if (ok && port > 0 && port < 65536)
+            return port;
+    }
+
+    return 5900;
+}
+
+static void openCosmopolitanVncViewer()
+{
+    if (!qEnvironmentVariableIsEmpty("FIAMY_NO_VNC_VIEWER"))
+        return;
+
+    if (QGuiApplication::platformName() != "vnc")
+        return;
+
+    const QString url = QStringLiteral("vnc://127.0.0.1:%1").arg(vncPortFromEnvironment());
+    qInfo().noquote() << "Fiamy Qt UI is available at" << url;
+
+    if (IsXnu()) {
+        QProcess::startDetached(QStringLiteral("open"), { url });
+    } else if (IsWindows()) {
+        QProcess::startDetached(QStringLiteral("cmd"), { QStringLiteral("/C"), QStringLiteral("start"),
+                                                         QString(), url });
+    } else if (IsLinux()) {
+        QProcess::startDetached(QStringLiteral("xdg-open"), { url });
+    }
+}
+
+static void scheduleCosmopolitanScreenshot(QQmlApplicationEngine &engine, QObject *parent)
+{
+    const QByteArray screenshotPath = qgetenv("FIAMY_SCREENSHOT_PATH");
+    if (screenshotPath.isEmpty())
+        return;
+
+    bool ok = false;
+    int delayMs = qEnvironmentVariableIntValue("FIAMY_SCREENSHOT_DELAY_MS", &ok);
+    if (!ok || delayMs < 0)
+        delayMs = 1500;
+
+    const QString path = QString::fromLocal8Bit(screenshotPath);
+    QTimer::singleShot(delayMs, parent, [&engine, path]() {
+        for (QObject *rootObject : engine.rootObjects()) {
+            auto *window = qobject_cast<QQuickWindow *>(rootObject);
+            if (!window)
+                continue;
+
+            window->requestUpdate();
+            const QImage image = window->grabWindow();
+            if (image.isNull()) {
+                qWarning().noquote() << "Fiamy screenshot failed:" << path;
+            } else {
+                QDir().mkpath(QFileInfo(path).absolutePath());
+                if (image.save(path))
+                    qInfo().noquote() << "Fiamy screenshot saved:" << path;
+                else
+                    qWarning().noquote() << "Fiamy screenshot save failed:" << path;
+            }
+
+            if (!qEnvironmentVariableIsEmpty("FIAMY_SCREENSHOT_QUIT_AFTER"))
+                QCoreApplication::quit();
+            return;
+        }
+
+        qWarning().noquote() << "Fiamy screenshot failed: no QQuickWindow";
+        if (!qEnvironmentVariableIsEmpty("FIAMY_SCREENSHOT_QUIT_AFTER"))
+            QCoreApplication::quit();
+    });
+}
+#endif
+
 int main(int argc, char *argv[])
 {
     QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+#ifdef __COSMOPOLITAN__
+    QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
+#else
     QCoreApplication::setAttribute(Qt::AA_UseOpenGLES);
-    QGuiApplication app(argc, argv);
+#endif
+#ifdef __COSMOPOLITAN__
+    configureCosmopolitanPlatform();
+    configureCosmopolitanFontDir();
+#endif
+    FiamyApplication app(argc, argv);
     app.setWindowIcon(QIcon(":/pink.ico"));
+#ifdef __COSMOPOLITAN__
+    qInfo().noquote() << "Fiamy QPA platform:" << QGuiApplication::platformName();
+    configureCosmopolitanApplicationFont();
+#endif
 
     // Estilo mínimo
     QQuickStyle::setStyle("Basic");
@@ -28,7 +201,13 @@ int main(int argc, char *argv[])
     qmlRegisterType<YoutubeDownloader>("Fiamy", 1, 0, "YoutubeDownloader");
 
     QQmlApplicationEngine engine;
+#ifdef __COSMOPOLITAN__
+    engine.setOutputWarningsToStandardError(true);
+    engine.rootContext()->setContextProperty(
+            "fiamyAutoSubmitUrl", QString::fromLocal8Bit(qgetenv("FIAMY_AUTO_SUBMIT_URL")));
+#else
     engine.setOutputWarningsToStandardError(false);
+#endif
 
 #ifdef QT_QML_DEBUG
     // 🔥 HOT RELOAD COMPLETO CON RECARGA AUTOMÁTICA
@@ -185,6 +364,19 @@ int main(int argc, char *argv[])
         Qt::QueuedConnection);
 
     engine.load(url);
+#ifdef __COSMOPOLITAN__
+    for (QObject *rootObject : engine.rootObjects()) {
+        if (auto *window = qobject_cast<QWindow *>(rootObject)) {
+            window->create();
+            QTimer::singleShot(0, window, [window]() {
+                window->requestActivate();
+                window->requestUpdate();
+            });
+        }
+    }
+    QTimer::singleShot(1000, &app, openCosmopolitanVncViewer);
+    scheduleCosmopolitanScreenshot(engine, &app);
+#endif
 
     return app.exec();
 }
