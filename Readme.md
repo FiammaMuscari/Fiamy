@@ -1,99 +1,69 @@
-# 🎧 Fiamy
+# 🎧 Fiamy Linux Qt 6 branch
 
-Fiamy is an MP3/YouTube player built with **Qt 6 + QML + C++**.  
-This repository is organized to clearly separate the **Windows** and **Linux** flows without duplicating the whole project 💿
+Fiamy is an MP3/YouTube player built with **Qt 6 + QML + C++**.
 
-<div align="center">
+This branch keeps the Linux Qt 6 history and Linux-specific implementation work. Current release packaging is documented on `main` and in the release notes, but the recommended Linux asset matrix is the same.
 
-[![License: MIT](https://img.shields.io/badge/License-Open_Source-green?style=for-the-badge)](LICENSE)
-[![Linux](https://img.shields.io/badge/Linux-Qt6-2ea043?style=for-the-badge&logo=linux)](https://github.com/FiammaMuscari/Fiamy/tree/linux-qt6)
-[![Windows](https://img.shields.io/badge/Windows-Legacy-0078d4?style=for-the-badge&logo=windows)](https://github.com/FiammaMuscari/Fiamy/tree/windows-legacy)
+## Recommended Linux downloads
 
-</div>
+| Distro family | Recommended asset | Alternative | Do not use |
+|---|---|---|---|
+| Arch / CachyOS / Manjaro / EndeavourOS | `Fiamy-1.0.2-x86_64.AppImage` | `fiamy-1.0.2-linux-portable-x86_64.tar.gz` | `.deb` |
+| Fedora / openSUSE / Gentoo / NixOS / other Linux | `Fiamy-1.0.2-x86_64.AppImage` | `fiamy-1.0.2-linux-portable-x86_64.tar.gz` | `.deb` |
+| Debian / Ubuntu / Linux Mint / Pop!_OS / Zorin | `fiamy_1.0.2_ubuntu-debian-bundled_amd64.deb` | AppImage or portable tarball | Arch/AUR packages |
 
-## 🌿 Project branches
+Release page: <https://github.com/FiammaMuscari/Fiamy/releases/tag/v1.0.2-linux-beta>
 
-- **`linux-qt6`** → active Linux / Qt6 branch
-- **`windows-legacy`** → preserved Windows flow
-- **`main`** → general reference branch
+## Linux quick start
 
-> If you are working on Linux, use **`linux-qt6`**.  
-> If you need the historical Windows behavior, use **`windows-legacy`**.
+AppImage:
 
-## ✨ What Fiamy does
-
-- 🎵 Plays local audio files
-- 🔗 Adds songs from YouTube links
-- 📋 Queues full playlists for download
-- 📦 Temporarily caches audio
-- 📌 Includes a mini-player
-- 🌈 Includes a reactive visualizer
-
-## 📁 Repository layout
-
-```text
-.
-├── components/          # shared QML UI
-├── thirdparty/          # embedded dependencies
-├── docs/                # platform notes
-├── platform/
-│   ├── linux/           # Linux-specific notes and assets
-│   └── windows/         # Windows-specific notes and assets
-├── packaging/
-│   ├── linux/           # future Linux packaging
-│   └── windows/         # future Windows packaging
-├── CMakeLists.txt
-├── Main.qml
-└── *.cpp / *.h
+```bash
+chmod +x Fiamy-1.0.2-x86_64.AppImage
+./Fiamy-1.0.2-x86_64.AppImage
 ```
 
-## 🐧 Linux (branch `linux-qt6`)
+If FUSE is unavailable:
 
-### Current status
+```bash
+./Fiamy-1.0.2-x86_64.AppImage --appimage-extract-and-run
+```
 
-- ✅ local playback
+Debian/Ubuntu package:
+
+```bash
+sudo apt install ./fiamy_1.0.2_ubuntu-debian-bundled_amd64.deb
+fiamy
+```
+
+Portable fallback:
+
+```bash
+tar -xzf fiamy-1.0.2-linux-portable-x86_64.tar.gz
+./fiamy-linux-portable/Fiamy.sh
+```
+
+## Packaging refresh
+
+The refreshed Linux packaging fixes cross-distro runtime errors such as:
+
+```text
+libicui18n.so.76: cannot open shared object file
+```
+
+The AppImage and portable archive bundle Qt, ICU, Qt Multimedia, FFmpeg-related runtime libraries, QML modules, and Wayland/XCB platform plugins. The `.deb` package is only for Debian/Ubuntu-family distros and installs a private runtime under `/opt/fiamy`.
+
+## Current Linux status
+
+- ✅ Local playback
 - ✅ YouTube integration with `yt-dlp`
-- ✅ local cache
+- ✅ Local cache
 - ✅ Linux-adapted visualizer
-- ✅ smoother visualizer tuned for large playlist installs
-- ✅ working file picker
-- ✅ `.deb` installer available via `packaging/linux/package-deb.sh`
+- ✅ Smoother visualizer tuned for large playlists
+- ✅ File picker
+- ✅ AppImage, portable tarball, and Debian/Ubuntu `.deb` packaging
 
-### Audio cache
-
-While Fiamy is running on Linux, the cache is stored in:
-
-```text
-/home/<your-user>/.local/share/Fiamy/Fiamy/cache/audio
-```
-
-In this branch, newly cached files are saved with readable names whenever possible.
-
-### Latest Linux package refresh
-
-The Linux package was refreshed on **April 23, 2026** with:
-
-- lower visualizer CPU usage
-- smoother and slower visualizer bars
-- rebuilt `.deb` installer from `linux-qt6`
-
-## 🪟 Windows (branch `windows-legacy`)
-
-The Windows branch is preserved as a reference for the historical flow and system-specific packaging.
-
-## 🛠️ Stack
-
-- **Qt 6**
-- **QML**
-- **C++17**
-- **CMake**
-- **yt-dlp**
-- **FFmpeg / Qt Multimedia**
-- **miniaudio** (platform-dependent)
-
-## ▶️ Local development
-
-### Linux
+## Development
 
 ```bash
 cmake -S . -B build-linux
@@ -101,56 +71,8 @@ cmake --build build-linux -j4
 ./build-linux/fiamy
 ```
 
-### Windows
+## Branches
 
-Use the `windows-legacy` branch and open the project in Qt Creator with the corresponding kit.
-
-## 🗂️ Documentation
-
-- `docs/linux.md`
-- `docs/windows.md`
-- `platform/linux/README.md`
-- `platform/windows/README.md`
-- `packaging/linux/README.md`
-- `packaging/windows/README.md`
-
-## 📦 Releases
-
-The project now keeps **Windows** and **Linux** releases side by side, without removing the historical Windows assets.
-
-### 🪟 Windows release
-
-- Release page: <https://github.com/FiammaMuscari/Fiamy/releases>
-- Latest installer: [**Fiamy_Setup-1.0.1.exe**](https://github.com/FiammaMuscari/Fiamy/releases/download/v1.0.1/Fiamy_Setup-1.0.1.exe)
-- Release: **Fiamy v1.0.1 – Stability & packaging fixes 🎧**
-
-### 🐧 Linux release
-
-- Release page: <https://github.com/FiammaMuscari/Fiamy/releases/tag/v1.0.2-linux-beta>
-- Latest installer: [**fiamy_1.0_amd64.deb**](https://github.com/FiammaMuscari/Fiamy/releases/download/v1.0.2-linux-beta/fiamy_1.0_amd64.deb)
-- Release: **Fiamy v1.0.2 – Linux installer beta 🎧**
-- Refreshed package date: **April 23, 2026**
-
-- Branch: **`linux-qt6`**
-- Installer format: **`.deb`**
-- Build output:
-
-```text
-dist/linux-deb/fiamy_1.0_amd64.deb
-```
-
-Install it with:
-
-```bash
-sudo apt install ./dist/linux-deb/fiamy_1.0_amd64.deb
-```
-
-This Linux package includes the app, desktop entry, icon, and bundled `yt-dlp` for a smoother first run.
-
-## 🚀 Next step
-
-The next natural step for the repository is to prepare:
-
-- Linux packaging
-- Windows packaging
-- installers with the required Qt6 dependencies
+- `main` — project overview and current release packaging
+- `linux-qt6` — Linux Qt 6 work branch
+- `windows-legacy` — preserved Windows flow
