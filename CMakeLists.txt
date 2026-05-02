@@ -165,10 +165,19 @@ if(UNIX AND NOT APPLE)
         DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/applications"
     )
 
+    set(FIAMY_BUNDLED_YT_DLP "" CACHE FILEPATH "Optional standalone yt-dlp executable to bundle with Linux packages")
     find_program(FIAMY_YT_DLP_EXECUTABLE yt-dlp)
-    if(FIAMY_YT_DLP_EXECUTABLE)
+
+    if(FIAMY_BUNDLED_YT_DLP AND EXISTS "${FIAMY_BUNDLED_YT_DLP}")
+        install(PROGRAMS "${FIAMY_BUNDLED_YT_DLP}"
+            DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/fiamy"
+            RENAME yt-dlp
+        )
+        message(STATUS "Bundling standalone yt-dlp from ${FIAMY_BUNDLED_YT_DLP}")
+    elseif(FIAMY_YT_DLP_EXECUTABLE)
         install(PROGRAMS "${FIAMY_YT_DLP_EXECUTABLE}"
             DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/fiamy"
+            RENAME yt-dlp
         )
         message(STATUS "Bundling yt-dlp from ${FIAMY_YT_DLP_EXECUTABLE}")
     else()

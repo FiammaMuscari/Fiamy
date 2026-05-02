@@ -29,6 +29,38 @@ static QString appWritableDataDir()
     return path;
 }
 
+static QString downloadedYtDlpPath()
+{
+#ifdef Q_OS_WIN
+    return QCoreApplication::applicationDirPath() + "/yt-dlp.exe";
+#else
+    return appWritableDataDir() + "/bin/yt-dlp";
+#endif
+}
+
+static bool isExecutableFile(const QString &path)
+{
+    QFileInfo info(path);
+    return info.exists() && info.isFile() && info.isExecutable();
+}
+
+static bool isPythonYtDlpWrapper(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return false;
+    }
+
+    const QByteArray header = file.read(512);
+    return header.contains("from yt_dlp import main");
+}
+
+static bool isDownloadedYtDlpPath(const QString &path)
+{
+    return QFileInfo(path).absoluteFilePath()
+        == QFileInfo(downloadedYtDlpPath()).absoluteFilePath();
+}
+
 static QString bundledLinuxYtDlpPath()
 {
 #ifdef Q_OS_LINUX
@@ -40,21 +72,12 @@ static QString bundledLinuxYtDlpPath()
     };
 
     for (const QString &candidate : candidates) {
-        if (QFileInfo::exists(candidate)) {
+        if (isExecutableFile(candidate) && !isPythonYtDlpWrapper(candidate)) {
             return QFileInfo(candidate).absoluteFilePath();
         }
     }
 #endif
     return {};
-}
-
-static QString downloadedYtDlpPath()
-{
-#ifdef Q_OS_WIN
-    return QCoreApplication::applicationDirPath() + "/yt-dlp.exe";
-#else
-    return appWritableDataDir() + "/bin/yt-dlp";
-#endif
 }
 
 static QString getYtDlpPath()
@@ -64,14 +87,19 @@ static QString getYtDlpPath()
         return systemPath;
     }
 
+    const QString downloadedPath = downloadedYtDlpPath();
+    if (QFileInfo::exists(downloadedPath)) {
+        return downloadedPath;
+    }
+
 #ifdef Q_OS_WIN
-    return downloadedYtDlpPath();
+    return downloadedPath;
 #else
     const QString bundledPath = bundledLinuxYtDlpPath();
     if (!bundledPath.isEmpty()) {
         return bundledPath;
     }
-    return downloadedYtDlpPath();
+    return downloadedPath;
 #endif
 }
 
@@ -123,9 +151,11 @@ YoutubeDownloader::YoutubeDownloader(QObject *parent)
     if (!QFile::exists(m_ytdlpPath)) {
         qDebug() << "⬇️ yt-dlp no encontrado, descargando...";
         downloadYtDlp();
-    } else {
-        qDebug() << "✅ yt-dlp encontrado";
+    } else if (isDownloadedYtDlpPath(m_ytdlpPath)) {
+        qDebug() << "✅ yt-dlp app-managed encontrado";
         checkYtDlpVersion();
+    } else {
+        qDebug() << "✅ yt-dlp del sistema o empaquetado encontrado:" << m_ytdlpPath;
     }
 
     ensureAudioCacheDir();
@@ -159,6 +189,10 @@ YoutubeDownloader::~YoutubeDownloader()
 
 void YoutubeDownloader::downloadYtDlp()
 {
+    if (!isDownloadedYtDlpPath(m_ytdlpPath)) {
+        m_ytdlpPath = downloadedYtDlpPath();
+    }
+
     emit ytdlpDownloading("Descargando yt-dlp...");
 
     QNetworkAccessManager *manager = new QNetworkAccessManager(this);
@@ -210,6 +244,11 @@ void YoutubeDownloader::downloadYtDlp()
 
 void YoutubeDownloader::checkYtDlpVersion()
 {
+    if (!isDownloadedYtDlpPath(m_ytdlpPath)) {
+        qDebug() << "✅ yt-dlp externo/empaquetado, no se auto-actualiza desde Fiamy";
+        return;
+    }
+
     QString settingsPath = appWritableDataDir() + "/ytdlp_update.dat";
     QFile settingsFile(settingsPath);
 
@@ -430,6 +469,7 @@ void YoutubeDownloader::getAudioUrl(const QString &youtubeUrl)
     if (!QFile::exists(m_ytdlpPath)) {
         emit errorOccurred("yt-dlp no encontrado. Descargando...");
         qCritical() << "❌ yt-dlp.exe NO EXISTE, iniciando descarga";
+        m_ytdlpPath = downloadedYtDlpPath();
         downloadYtDlp();
         return;
     }

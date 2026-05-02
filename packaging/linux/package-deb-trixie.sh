@@ -26,13 +26,16 @@ fi
     apt-get install -y --no-install-recommends \
       build-essential \
       cmake \
-      cpack \
+      dpkg-dev \
+      file \
       ninja-build \
       pkg-config \
       qt6-base-dev \
       qt6-base-dev-tools \
       qt6-declarative-dev \
       qt6-multimedia-dev \
-      qt6-tools-dev-tools
-    ./packaging/linux/package-deb.sh trixie
+      qt6-tools-dev-tools \
+      qt6-wayland \
+      wget
+    ./packaging/linux/package-deb.sh debian-trixie-bundled
   '

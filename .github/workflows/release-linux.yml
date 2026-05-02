@@ -31,14 +31,28 @@ jobs:
             wget \
             yt-dlp
 
-      - name: Build AppImage
-        run: ./packaging/linux/package-appimage.sh
-
       - name: Build portable Linux bundle
         run: ./packaging/linux/package-portable.sh
 
+      - name: Build AppImage
+        run: FIAMY_SKIP_PORTABLE_BUILD=1 ./packaging/linux/package-appimage.sh
+
       - name: Build Ubuntu-targeted .deb
-        run: ./packaging/linux/package-deb.sh ubuntu-latest
+        run: FIAMY_SKIP_PORTABLE_BUILD=1 ./packaging/linux/package-deb.sh ubuntu-debian-bundled
+
+      - name: Generate Linux checksums
+        run: |
+          sha256sum \
+            dist/linux-appimage/Fiamy-*-x86_64.AppImage \
+            dist/linux-portable/fiamy-*-linux-portable-x86_64.tar.gz \
+            dist/linux-deb/fiamy_*_ubuntu-debian-bundled_amd64.deb \
+            > dist/linux-sha256sums.txt
+
+      - name: Smoke test portable bundle
+        run: ./packaging/linux/smoke-test-linux-bundle.sh dist/fiamy-linux-portable
+
+      - name: Smoke test AppImage
+        run: ./packaging/linux/smoke-test-linux-bundle.sh dist/linux-appimage/Fiamy-*-x86_64.AppImage
 
       - name: Upload AppImage to workflow artifacts
         uses: actions/upload-artifact@v4
@@ -58,6 +72,12 @@ jobs:
           name: fiamy-linux-deb
           path: dist/linux-deb/*.deb
 
+      - name: Upload Linux checksums to workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fiamy-linux-sha256sums
+          path: dist/linux-sha256sums.txt
+
       - name: Attach assets to GitHub Release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
@@ -66,3 +86,4 @@ jobs:
             dist/linux-appimage/*.AppImage
             dist/linux-portable/*.tar.gz
             dist/linux-deb/*.deb
+            dist/linux-sha256sums.txt
