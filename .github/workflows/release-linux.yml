@@ -4,6 +4,14 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing release tag to replace Linux assets on'
+        required: true
+        default: 'v1.0.2-linux-beta'
+
+permissions:
+  contents: write
 
 jobs:
   linux-assets:
@@ -85,9 +93,10 @@ jobs:
           path: dist/linux-sha256sums.txt
 
       - name: Attach assets to GitHub Release
-        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}
+          overwrite_files: true
           files: |
             dist/linux-appimage/*.AppImage
             dist/linux-portable/*.tar.gz
