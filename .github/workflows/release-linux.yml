@@ -34,6 +34,8 @@ jobs:
             patchelf \
             wget \
             yt-dlp \
+            libgl-dev \
+            libopengl-dev \
             qt6-base-dev \
             qt6-base-dev-tools \
             qt6-declarative-dev \
