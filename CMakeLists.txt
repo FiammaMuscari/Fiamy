@@ -13,7 +13,13 @@ find_package(Qt6 ${FIAMY_MIN_QT_VERSION} REQUIRED COMPONENTS
     QuickControls2
     Multimedia
 )
-qt_standard_project_setup()
+if(COMMAND qt_standard_project_setup)
+    qt_standard_project_setup()
+else()
+    set(CMAKE_AUTOMOC ON)
+    set(CMAKE_AUTORCC ON)
+    set(CMAKE_AUTOUIC ON)
+endif()
 
 set(SRC
     main.cpp
