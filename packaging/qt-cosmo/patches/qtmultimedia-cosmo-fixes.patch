@@ -21,20 +21,38 @@ index d80a573fb..20db8b590 100644
          Test
          QuickTest
          QuickControls2
-@@ -35,6 +44,17 @@ find_package(Qt6 ${PROJECT_VERSION} QUIET CONFIG
+@@ -35,6 +44,35 @@ find_package(Qt6 ${PROJECT_VERSION} QUIET CONFIG
          OpenGLPrivate
          Concurrent)
  
-+find_package(Qt6QmlTools REQUIRED CONFIG
-+    PATHS /opt/homebrew
-+    NO_DEFAULT_PATH
-+    NO_CMAKE_FIND_ROOT_PATH
-+)
-+find_package(Qt6ShaderTools REQUIRED CONFIG
-+    PATHS /opt/homebrew/Cellar/qtshadertools/6.10.2 /opt/homebrew
-+    NO_DEFAULT_PATH
-+    NO_CMAKE_FIND_ROOT_PATH
-+)
++if(COSMOPOLITAN)
++    set(QT_COSMO_HOST_PACKAGE_PATHS)
++    if(QT_HOST_PATH)
++        list(APPEND QT_COSMO_HOST_PACKAGE_PATHS
++            "${QT_HOST_PATH}"
++            "${QT_HOST_PATH}/lib/cmake"
++        )
++        file(GLOB QT_COSMO_HOST_MULTIARCH_CMAKE_DIRS
++            "${QT_HOST_PATH}/lib/*/cmake"
++            "${QT_HOST_PATH}/Cellar/qtshadertools/*"
++            "${QT_HOST_PATH}/opt/qtshadertools"
++        )
++        list(APPEND QT_COSMO_HOST_PACKAGE_PATHS
++            ${QT_COSMO_HOST_MULTIARCH_CMAKE_DIRS}
++        )
++    endif()
++
++    find_package(Qt6QmlTools REQUIRED CONFIG
++        PATHS ${QT_COSMO_HOST_PACKAGE_PATHS}
++        NO_DEFAULT_PATH
++        NO_CMAKE_FIND_ROOT_PATH
++    )
++    find_package(Qt6ShaderTools REQUIRED CONFIG
++        PATHS ${QT_COSMO_HOST_PACKAGE_PATHS}
++        NO_DEFAULT_PATH
++        NO_CMAKE_FIND_ROOT_PATH
++    )
++endif()
 +
  if(NOT TARGET Qt::Gui)
      message(NOTICE "Skipping the build as the condition \"TARGET Qt::Gui\" is not met.")
