@@ -54,7 +54,6 @@ build/
 build-*/
 cmake-build-*/
 out/
-dist/
 
 # CMake
 CMakeCache.txt
@@ -85,6 +84,8 @@ installer_output/
 *.msi
 *.deb
 *.AppImage
+dist/
+.codex
 
 # IDE
 .vscode/

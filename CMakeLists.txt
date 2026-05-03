@@ -1,14 +1,13 @@
 cmake_minimum_required(VERSION 3.16)
-project(Fiamy VERSION 1.0 LANGUAGES CXX)
+project(Fiamy VERSION 1.0.2 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-include(GNUInstallDirs)
+set(FIAMY_MIN_QT_VERSION "6.8" CACHE STRING "Minimum Qt version required to build Fiamy")
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS
+find_package(Qt6 ${FIAMY_MIN_QT_VERSION} REQUIRED COMPONENTS
     Core
     Gui
-    Network
     Qml
     Quick
     QuickControls2
@@ -124,39 +123,12 @@ target_include_directories(miniaudio INTERFACE
 target_link_libraries(Fiamy PRIVATE
     Qt6::Core
     Qt6::Gui
-    Qt6::Network
     Qt6::Qml
     Qt6::Quick
     Qt6::QuickControls2
     Qt6::Multimedia
     miniaudio
 )
-
-install(TARGETS Fiamy
-    BUNDLE DESTINATION .
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
-
-if(UNIX AND EXISTS "${CMAKE_SOURCE_DIR}/yt-dlp")
-    install(PROGRAMS "${CMAKE_SOURCE_DIR}/yt-dlp"
-        DESTINATION ${CMAKE_INSTALL_DATADIR}/fiamy
-    )
-endif()
-
-if(UNIX AND EXISTS "${CMAKE_BINARY_DIR}/yt-dlp")
-    install(PROGRAMS "${CMAKE_BINARY_DIR}/yt-dlp"
-        DESTINATION ${CMAKE_INSTALL_DATADIR}/fiamy
-    )
-endif()
-
-if(QT_VERSION VERSION_GREATER_EQUAL 6.3)
-    qt_generate_deploy_app_script(
-        TARGET Fiamy
-        OUTPUT_SCRIPT deploy_script
-        NO_UNSUPPORTED_PLATFORM_ERROR
-    )
-    install(SCRIPT ${deploy_script})
-endif()
 
 if(WIN32)
     if(EXISTS "${CMAKE_SOURCE_DIR}/yt-dlp.exe")
@@ -169,50 +141,65 @@ if(WIN32)
     else()
         message(STATUS "yt-dlp.exe no encontrado - se descargará automáticamente al ejecutar")
     endif()
-elseif(UNIX)
-    if(EXISTS "${CMAKE_SOURCE_DIR}/yt-dlp")
-        add_custom_command(TARGET Fiamy POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${CMAKE_SOURCE_DIR}/yt-dlp"
-                "$<TARGET_FILE_DIR:Fiamy>/yt-dlp"
-            COMMENT "Copiando yt-dlp al directorio de salida"
-        )
-    endif()
 endif()
 
 if(UNIX AND NOT APPLE)
-    configure_file(
-        "${CMAKE_SOURCE_DIR}/platform/linux/fiamy.desktop.in"
-        "${CMAKE_CURRENT_BINARY_DIR}/fiamy.desktop"
-        @ONLY
+    include(GNUInstallDirs)
+
+    set(FIAMY_LINUX_DESKTOP_TEMPLATE "${CMAKE_CURRENT_SOURCE_DIR}/platform/linux/fiamy.desktop.in")
+    set(FIAMY_LINUX_DESKTOP_FILE "${CMAKE_CURRENT_BINARY_DIR}/fiamy.desktop")
+    configure_file("${FIAMY_LINUX_DESKTOP_TEMPLATE}" "${FIAMY_LINUX_DESKTOP_FILE}" @ONLY)
+
+    install(TARGETS Fiamy RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    qt_generate_deploy_app_script(
+        TARGET Fiamy
+        OUTPUT_SCRIPT FiamyDeployScript
+        NO_UNSUPPORTED_PLATFORM_ERROR
     )
-    configure_file(
-        "${CMAKE_SOURCE_DIR}/pink.png"
-        "${CMAKE_CURRENT_BINARY_DIR}/fiamy.png"
-        COPYONLY
+    install(SCRIPT "${FiamyDeployScript}")
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/pink.png"
+        DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/256x256/apps"
+        RENAME fiamy.png
+    )
+    install(FILES "${FIAMY_LINUX_DESKTOP_FILE}"
+        DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/applications"
     )
 
-    install(FILES
-        "${CMAKE_CURRENT_BINARY_DIR}/fiamy.desktop"
-        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications
-    )
+    set(FIAMY_BUNDLED_YT_DLP "" CACHE FILEPATH "Optional standalone yt-dlp executable to bundle with Linux packages")
+    find_program(FIAMY_YT_DLP_EXECUTABLE yt-dlp)
 
-    install(FILES
-        "${CMAKE_CURRENT_BINARY_DIR}/fiamy.png"
-        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/256x256/apps
-    )
+    if(FIAMY_BUNDLED_YT_DLP AND EXISTS "${FIAMY_BUNDLED_YT_DLP}")
+        install(PROGRAMS "${FIAMY_BUNDLED_YT_DLP}"
+            DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/fiamy"
+            RENAME yt-dlp
+        )
+        message(STATUS "Bundling standalone yt-dlp from ${FIAMY_BUNDLED_YT_DLP}")
+    elseif(FIAMY_YT_DLP_EXECUTABLE)
+        install(PROGRAMS "${FIAMY_YT_DLP_EXECUTABLE}"
+            DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/fiamy"
+            RENAME yt-dlp
+        )
+        message(STATUS "Bundling yt-dlp from ${FIAMY_YT_DLP_EXECUTABLE}")
+    else()
+        message(STATUS "yt-dlp no encontrado en PATH - Linux usará el auto-descargador en tiempo de ejecución")
+    endif()
+
+    set(CPACK_GENERATOR "DEB")
+    set(CPACK_PACKAGE_NAME "fiamy")
+    set(CPACK_PACKAGE_VENDOR "FiammaMuscari")
+    set(CPACK_PACKAGE_CONTACT "fiammamuscari@gmail.com")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Fiamy MP3 and YouTube player")
+    set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "fiammamuscari")
+    set(CPACK_DEBIAN_PACKAGE_SECTION "multimedia")
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+    set(CPACK_DEBIAN_FILE_NAME "DEB-DEFAULT")
+
+    set(FIAMY_DEB_DISTRO_TAG "" CACHE STRING "Optional distro suffix for generated DEB names, e.g. trixie")
+    if(FIAMY_DEB_DISTRO_TAG)
+        string(REGEX REPLACE "[^A-Za-z0-9.+-]" "-" FIAMY_DEB_DISTRO_TAG_SAFE "${FIAMY_DEB_DISTRO_TAG}")
+        set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}_${PROJECT_VERSION}_${FIAMY_DEB_DISTRO_TAG_SAFE}_${CMAKE_SYSTEM_PROCESSOR}")
+    endif()
+
+    include(CPack)
 endif()
-
-set(CPACK_PACKAGE_NAME "fiamy")
-set(CPACK_PACKAGE_VENDOR "FiammaMuscari")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Fiamy MP3 and YouTube player")
-set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-set(CPACK_PACKAGE_CONTACT "fiammamuscari@gmail.com")
-set(CPACK_PACKAGE_FILE_NAME "fiamy-${PROJECT_VERSION}-linux")
-set(CPACK_DEBIAN_PACKAGE_MAINTAINER "fiammamuscari")
-set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
-set(CPACK_DEBIAN_PACKAGE_SECTION "multimedia")
-set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
-set(CPACK_DEBIAN_PACKAGE_GENERATE_SHLIBS ON)
-
-include(CPack)
