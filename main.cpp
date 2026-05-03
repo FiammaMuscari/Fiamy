@@ -167,6 +167,8 @@ int main(int argc, char *argv[])
     engine.setOutputWarningsToStandardError(true);
     engine.rootContext()->setContextProperty(
             "fiamyAutoSubmitUrl", QString::fromLocal8Bit(qgetenv("FIAMY_AUTO_SUBMIT_URL")));
+    engine.rootContext()->setContextProperty(
+            "fiamyDisableAutoplay", qEnvironmentVariableIsSet("FIAMY_DISABLE_AUTOPLAY"));
 #else
     engine.setOutputWarningsToStandardError(false);
 #endif

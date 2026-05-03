@@ -18,6 +18,7 @@
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QFileDevice>
+#include <QSysInfo>
 
 #ifdef __COSMOPOLITAN__
 extern "C" {
@@ -41,10 +42,14 @@ static QString appWritableDataDir()
 
 static QString downloadedYtDlpPath()
 {
+#ifdef __COSMOPOLITAN__
+    return appWritableDataDir() + "/bin/" + (IsWindows() ? "yt-dlp.exe" : "yt-dlp");
+#else
 #ifdef Q_OS_WIN
     return QCoreApplication::applicationDirPath() + "/yt-dlp.exe";
 #else
     return appWritableDataDir() + "/bin/yt-dlp";
+#endif
 #endif
 }
 
@@ -69,6 +74,166 @@ static bool isDownloadedYtDlpPath(const QString &path)
 {
     return QFileInfo(path).absoluteFilePath()
         == QFileInfo(downloadedYtDlpPath()).absoluteFilePath();
+}
+
+static bool isRunningWindows()
+{
+#ifdef __COSMOPOLITAN__
+    return IsWindows();
+#elif defined(Q_OS_WIN)
+    return true;
+#else
+    return false;
+#endif
+}
+
+static void makeYtDlpExecutable(const QString &path)
+{
+    if (isRunningWindows()) {
+        return;
+    }
+
+    QFile file(path);
+    file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner
+                        | QFileDevice::ReadGroup | QFileDevice::ExeGroup
+                        | QFileDevice::ReadOther | QFileDevice::ExeOther);
+}
+
+static bool isRunningArm64()
+{
+    const QString arch = QSysInfo::currentCpuArchitecture().toLower();
+    return arch == "arm64" || arch == "aarch64";
+}
+
+struct EmbeddedYtDlpPayload {
+    const unsigned char *start = nullptr;
+    const unsigned char *end = nullptr;
+    const char *name = nullptr;
+
+    qint64 size() const
+    {
+        return static_cast<qint64>(reinterpret_cast<quintptr>(end)
+                                  - reinterpret_cast<quintptr>(start));
+    }
+
+    bool isValid() const
+    {
+        return start && end && size() > 0;
+    }
+};
+
+#ifdef FIAMY_EMBEDDED_YT_DLP
+extern "C" {
+extern const unsigned char fiamy_embedded_ytdlp_linux_start[];
+extern const unsigned char fiamy_embedded_ytdlp_linux_end[];
+extern const unsigned char fiamy_embedded_ytdlp_linux_aarch64_start[];
+extern const unsigned char fiamy_embedded_ytdlp_linux_aarch64_end[];
+extern const unsigned char fiamy_embedded_ytdlp_macos_start[];
+extern const unsigned char fiamy_embedded_ytdlp_macos_end[];
+extern const unsigned char fiamy_embedded_ytdlp_windows_start[];
+extern const unsigned char fiamy_embedded_ytdlp_windows_end[];
+}
+#endif
+
+static EmbeddedYtDlpPayload embeddedYtDlpPayload()
+{
+#ifdef FIAMY_EMBEDDED_YT_DLP
+#ifdef __COSMOPOLITAN__
+    if (IsWindows()) {
+        return {fiamy_embedded_ytdlp_windows_start, fiamy_embedded_ytdlp_windows_end, "yt-dlp.exe"};
+    }
+    if (IsXnu()) {
+        return {fiamy_embedded_ytdlp_macos_start, fiamy_embedded_ytdlp_macos_end, "yt-dlp_macos"};
+    }
+    if (IsLinux()) {
+        if (isRunningArm64()) {
+            return {fiamy_embedded_ytdlp_linux_aarch64_start,
+                    fiamy_embedded_ytdlp_linux_aarch64_end,
+                    "yt-dlp_linux_aarch64"};
+        }
+        return {fiamy_embedded_ytdlp_linux_start, fiamy_embedded_ytdlp_linux_end, "yt-dlp_linux"};
+    }
+#elif defined(Q_OS_WIN)
+    return {fiamy_embedded_ytdlp_windows_start, fiamy_embedded_ytdlp_windows_end, "yt-dlp.exe"};
+#elif defined(Q_OS_MACOS)
+    return {fiamy_embedded_ytdlp_macos_start, fiamy_embedded_ytdlp_macos_end, "yt-dlp_macos"};
+#elif defined(Q_OS_LINUX)
+    if (isRunningArm64()) {
+        return {fiamy_embedded_ytdlp_linux_aarch64_start,
+                fiamy_embedded_ytdlp_linux_aarch64_end,
+                "yt-dlp_linux_aarch64"};
+    }
+    return {fiamy_embedded_ytdlp_linux_start, fiamy_embedded_ytdlp_linux_end, "yt-dlp_linux"};
+#endif
+#endif
+    return {};
+}
+
+static bool extractEmbeddedYtDlp(QString *extractedPath)
+{
+#ifdef FIAMY_EMBEDDED_YT_DLP
+    const EmbeddedYtDlpPayload payload = embeddedYtDlpPayload();
+    if (!payload.isValid()) {
+        return false;
+    }
+    const qint64 payloadSize = payload.size();
+
+    const QString targetPath = downloadedYtDlpPath();
+    QFileInfo targetInfo(targetPath);
+    QDir().mkpath(targetInfo.absolutePath());
+
+    if (isExecutableFile(targetPath) && QFileInfo(targetPath).size() == payloadSize) {
+        if (extractedPath) {
+            *extractedPath = targetPath;
+        }
+        return true;
+    }
+
+    const QString tempPath = targetPath + ".tmp";
+    QFile::remove(tempPath);
+
+    QFile output(tempPath);
+    if (!output.open(QIODevice::WriteOnly)) {
+        qWarning() << "⚠️ No se pudo extraer yt-dlp embebido:" << tempPath;
+        return false;
+    }
+    const qint64 written = output.write(reinterpret_cast<const char *>(payload.start), payloadSize);
+    output.close();
+    if (written != payloadSize) {
+        QFile::remove(tempPath);
+        qWarning() << "⚠️ Escritura incompleta al extraer yt-dlp embebido:" << payload.name;
+        return false;
+    }
+    makeYtDlpExecutable(tempPath);
+
+    QFile::remove(targetPath);
+    if (!QFile::rename(tempPath, targetPath)) {
+        QFile::remove(tempPath);
+        qWarning() << "⚠️ No se pudo instalar yt-dlp embebido:" << targetPath;
+        return false;
+    }
+    makeYtDlpExecutable(targetPath);
+
+    if (extractedPath) {
+        *extractedPath = targetPath;
+    }
+    qDebug() << "✅ yt-dlp embebido extraído:" << targetPath << "(" << payload.name << ")";
+    return true;
+#else
+    Q_UNUSED(extractedPath);
+    return false;
+#endif
+}
+
+static bool isEmbeddedYtDlpPath(const QString &path)
+{
+#ifdef FIAMY_EMBEDDED_YT_DLP
+    return QFileInfo(path).absoluteFilePath()
+        == QFileInfo(downloadedYtDlpPath()).absoluteFilePath();
+#else
+    Q_UNUSED(path);
+    return false;
+#endif
 }
 
 static QString bundledLinuxYtDlpPath()
@@ -110,6 +275,11 @@ static QString bundledMacYtDlpPath()
 
 static QString getYtDlpPath()
 {
+    QString embeddedPath;
+    if (extractEmbeddedYtDlp(&embeddedPath)) {
+        return embeddedPath;
+    }
+
     const QString systemPath = QStandardPaths::findExecutable("yt-dlp");
     if (!systemPath.isEmpty()) {
         return systemPath;
@@ -137,12 +307,25 @@ static QString getYtDlpPath()
 
 static QUrl ytDlpDownloadUrl()
 {
+#ifdef __COSMOPOLITAN__
+    if (IsWindows()) {
+        return QUrl("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe");
+    }
+    if (IsXnu()) {
+        return QUrl("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos");
+    }
+    if (IsLinux() && isRunningArm64()) {
+        return QUrl("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux_aarch64");
+    }
+    return QUrl("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux");
+#else
 #ifdef Q_OS_WIN
     return QUrl("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe");
 #elif defined(Q_OS_MACOS)
     return QUrl("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos");
 #else
     return QUrl("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux");
+#endif
 #endif
 }
 
@@ -295,8 +478,16 @@ YoutubeDownloader::YoutubeDownloader(QObject *parent)
 
     // Verificar/descargar yt-dlp al iniciar
     if (!QFile::exists(m_ytdlpPath)) {
-        qDebug() << "⬇️ yt-dlp no encontrado, descargando...";
-        downloadYtDlp();
+        QString embeddedPath;
+        if (extractEmbeddedYtDlp(&embeddedPath)) {
+            m_ytdlpPath = embeddedPath;
+            qDebug() << "✅ yt-dlp embebido listo:" << m_ytdlpPath;
+        } else {
+            qDebug() << "⬇️ yt-dlp no encontrado, descargando...";
+            downloadYtDlp();
+        }
+    } else if (isEmbeddedYtDlpPath(m_ytdlpPath)) {
+        qDebug() << "✅ yt-dlp embebido listo:" << m_ytdlpPath;
     } else if (isDownloadedYtDlpPath(m_ytdlpPath)) {
         qDebug() << "✅ yt-dlp app-managed encontrado";
         checkYtDlpVersion();
@@ -335,6 +526,14 @@ YoutubeDownloader::~YoutubeDownloader()
 
 void YoutubeDownloader::downloadYtDlp()
 {
+    QString embeddedPath;
+    if (extractEmbeddedYtDlp(&embeddedPath)) {
+        m_ytdlpPath = embeddedPath;
+        qDebug() << "✅ yt-dlp embebido listo";
+        emit ytdlpDownloading("✅ yt-dlp listo");
+        return;
+    }
+
     if (!isDownloadedYtDlpPath(m_ytdlpPath)) {
         m_ytdlpPath = downloadedYtDlpPath();
     }
@@ -368,9 +567,7 @@ void YoutubeDownloader::downloadYtDlp()
                 file.write(reply->readAll());
                 file.close();
 #ifndef Q_OS_WIN
-                file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner |
-                                    QFileDevice::ReadGroup | QFileDevice::ExeGroup |
-                                    QFileDevice::ReadOther | QFileDevice::ExeOther);
+                makeYtDlpExecutable(m_ytdlpPath);
 #endif
                 qDebug() << "✅ yt-dlp descargado correctamente";
                 emit ytdlpDownloading("✅ yt-dlp listo");
@@ -692,11 +889,16 @@ bool YoutubeDownloader::makeSpaceForFile(qint64 estimatedSize)
 void YoutubeDownloader::getAudioUrl(const QString &youtubeUrl)
 {
     if (!QFile::exists(m_ytdlpPath)) {
-        emit errorOccurred("yt-dlp no encontrado. Descargando...");
-        qCritical() << "❌ yt-dlp.exe NO EXISTE, iniciando descarga";
-        m_ytdlpPath = downloadedYtDlpPath();
-        downloadYtDlp();
-        return;
+        QString embeddedPath;
+        if (extractEmbeddedYtDlp(&embeddedPath)) {
+            m_ytdlpPath = embeddedPath;
+        } else {
+            emit errorOccurred("yt-dlp no encontrado. Descargando...");
+            qCritical() << "❌ yt-dlp NO EXISTE, iniciando descarga";
+            m_ytdlpPath = downloadedYtDlpPath();
+            downloadYtDlp();
+            return;
+        }
     }
 
     m_downloadQueue.clear();
@@ -1117,10 +1319,17 @@ void YoutubeDownloader::onProcessError(QProcess::ProcessError error)
 {
     QString errorStr;
     switch(error) {
-    case QProcess::FailedToStart:
-        errorStr = "yt-dlp no pudo iniciar. Descargando...";
-        downloadYtDlp();
+    case QProcess::FailedToStart: {
+        QString embeddedPath;
+        if (extractEmbeddedYtDlp(&embeddedPath)) {
+            m_ytdlpPath = embeddedPath;
+            errorStr = "yt-dlp no pudo iniciar; binario embebido reinstalado";
+        } else {
+            errorStr = "yt-dlp no pudo iniciar. Descargando...";
+            downloadYtDlp();
+        }
         break;
+    }
     case QProcess::Crashed:
         errorStr = "yt-dlp se cerró inesperadamente";
         break;

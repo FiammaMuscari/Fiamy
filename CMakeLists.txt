@@ -94,6 +94,89 @@ set(RESOURCE_FILES
     pink.ico
 )
 
+set(FIAMY_EMBED_YT_DLP_DEFAULT OFF)
+if(COSMOPOLITAN)
+    set(FIAMY_EMBED_YT_DLP_DEFAULT ON)
+endif()
+set(FIAMY_EMBED_YT_DLP "${FIAMY_EMBED_YT_DLP_DEFAULT}" CACHE BOOL
+    "Embed standalone yt-dlp binaries for Windows, macOS, and Linux into the Cosmopolitan executable")
+set(FIAMY_YT_DLP_ASSET_DIR "${CMAKE_CURRENT_BINARY_DIR}/yt-dlp-assets" CACHE PATH
+    "Directory used to cache yt-dlp binaries embedded in Cosmopolitan builds")
+set(FIAMY_YT_DLP_LINUX_PATH "" CACHE FILEPATH "Optional pre-downloaded yt-dlp Linux binary")
+set(FIAMY_YT_DLP_LINUX_AARCH64_PATH "" CACHE FILEPATH "Optional pre-downloaded yt-dlp Linux aarch64 binary")
+set(FIAMY_YT_DLP_MACOS_PATH "" CACHE FILEPATH "Optional pre-downloaded yt-dlp macOS binary")
+set(FIAMY_YT_DLP_WINDOWS_PATH "" CACHE FILEPATH "Optional pre-downloaded yt-dlp Windows binary")
+
+function(fiamy_prepare_embedded_ytdlp output_var label file_name download_url override_path)
+    if(override_path)
+        if(NOT EXISTS "${override_path}")
+            message(FATAL_ERROR "Configured ${label} yt-dlp binary does not exist: ${override_path}")
+        endif()
+        set(${output_var} "${override_path}" PARENT_SCOPE)
+        return()
+    endif()
+
+    file(MAKE_DIRECTORY "${FIAMY_YT_DLP_ASSET_DIR}")
+    set(download_path "${FIAMY_YT_DLP_ASSET_DIR}/${file_name}")
+    if(NOT EXISTS "${download_path}")
+        message(STATUS "Downloading ${label} yt-dlp for embedded resource")
+        file(DOWNLOAD
+            "${download_url}"
+            "${download_path}"
+            STATUS download_status
+            TLS_VERIFY ON
+        )
+        list(GET download_status 0 download_code)
+        list(GET download_status 1 download_message)
+        if(NOT download_code EQUAL 0)
+            file(REMOVE "${download_path}")
+            message(FATAL_ERROR
+                "Failed to download ${label} yt-dlp: ${download_message} (${download_code})")
+        endif()
+    endif()
+
+    set(${output_var} "${download_path}" PARENT_SCOPE)
+endfunction()
+
+set(FIAMY_EMBEDDED_YT_DLP_FILES)
+if(FIAMY_EMBED_YT_DLP)
+    fiamy_prepare_embedded_ytdlp(
+        FIAMY_EMBEDDED_YT_DLP_LINUX
+        "Linux x86_64"
+        "yt-dlp_linux"
+        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux"
+        "${FIAMY_YT_DLP_LINUX_PATH}"
+    )
+    fiamy_prepare_embedded_ytdlp(
+        FIAMY_EMBEDDED_YT_DLP_LINUX_AARCH64
+        "Linux aarch64"
+        "yt-dlp_linux_aarch64"
+        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux_aarch64"
+        "${FIAMY_YT_DLP_LINUX_AARCH64_PATH}"
+    )
+    fiamy_prepare_embedded_ytdlp(
+        FIAMY_EMBEDDED_YT_DLP_MACOS
+        "macOS"
+        "yt-dlp_macos"
+        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
+        "${FIAMY_YT_DLP_MACOS_PATH}"
+    )
+    fiamy_prepare_embedded_ytdlp(
+        FIAMY_EMBEDDED_YT_DLP_WINDOWS
+        "Windows"
+        "yt-dlp.exe"
+        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+        "${FIAMY_YT_DLP_WINDOWS_PATH}"
+    )
+
+    list(APPEND FIAMY_EMBEDDED_YT_DLP_FILES
+        "${FIAMY_EMBEDDED_YT_DLP_LINUX}"
+        "${FIAMY_EMBEDDED_YT_DLP_LINUX_AARCH64}"
+        "${FIAMY_EMBEDDED_YT_DLP_MACOS}"
+        "${FIAMY_EMBEDDED_YT_DLP_WINDOWS}"
+    )
+endif()
+
 file(GLOB THIRD_PARTY_HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/*.h")
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty" PREFIX "ThirdParty" FILES ${THIRD_PARTY_HEADERS})
 
@@ -227,6 +310,62 @@ qt_add_resources(Fiamy "resources"
     PREFIX "/"
     FILES ${RESOURCE_FILES}
 )
+if(FIAMY_EMBEDDED_YT_DLP_FILES)
+    set(FIAMY_EMBEDDED_YT_DLP_ASM "${CMAKE_CURRENT_BINARY_DIR}/embedded_ytdlp.S")
+    file(WRITE "${FIAMY_EMBEDDED_YT_DLP_ASM}" ".section .rodata\n")
+
+    function(fiamy_append_embedded_ytdlp_asm symbol path)
+        set(escaped_path "${path}")
+        string(REPLACE "\\" "\\\\" escaped_path "${escaped_path}")
+        string(REPLACE "\"" "\\\"" escaped_path "${escaped_path}")
+        file(APPEND "${FIAMY_EMBEDDED_YT_DLP_ASM}"
+            ".balign 16\n"
+            ".globl ${symbol}_start\n"
+            ".globl ${symbol}_end\n"
+            "${symbol}_start:\n"
+            ".incbin \"${escaped_path}\"\n"
+            "${symbol}_end:\n"
+        )
+    endfunction()
+
+    fiamy_append_embedded_ytdlp_asm(fiamy_embedded_ytdlp_linux "${FIAMY_EMBEDDED_YT_DLP_LINUX}")
+    fiamy_append_embedded_ytdlp_asm(fiamy_embedded_ytdlp_linux_aarch64 "${FIAMY_EMBEDDED_YT_DLP_LINUX_AARCH64}")
+    fiamy_append_embedded_ytdlp_asm(fiamy_embedded_ytdlp_macos "${FIAMY_EMBEDDED_YT_DLP_MACOS}")
+    fiamy_append_embedded_ytdlp_asm(fiamy_embedded_ytdlp_windows "${FIAMY_EMBEDDED_YT_DLP_WINDOWS}")
+
+    if(NOT COSMOPOLITAN)
+        message(FATAL_ERROR "FIAMY_EMBED_YT_DLP currently requires the Cosmopolitan build")
+    endif()
+
+    set(FIAMY_COSMO_BIN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/dist/tools/cosmocc/bin")
+    set(FIAMY_EMBEDDED_YT_DLP_OBJ "${CMAKE_CURRENT_BINARY_DIR}/embedded_ytdlp.o")
+    set(FIAMY_EMBEDDED_YT_DLP_AARCH64_OBJ
+        "${CMAKE_CURRENT_BINARY_DIR}/.aarch64/embedded_ytdlp.o")
+    add_custom_command(
+        OUTPUT
+            "${FIAMY_EMBEDDED_YT_DLP_OBJ}"
+            "${FIAMY_EMBEDDED_YT_DLP_AARCH64_OBJ}"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/.aarch64"
+        COMMAND "${FIAMY_COSMO_BIN_DIR}/x86_64-linux-cosmo-as"
+            -o "${FIAMY_EMBEDDED_YT_DLP_OBJ}"
+            "${FIAMY_EMBEDDED_YT_DLP_ASM}"
+        COMMAND "${FIAMY_COSMO_BIN_DIR}/aarch64-linux-cosmo-as"
+            -o "${FIAMY_EMBEDDED_YT_DLP_AARCH64_OBJ}"
+            "${FIAMY_EMBEDDED_YT_DLP_ASM}"
+        DEPENDS
+            "${FIAMY_EMBEDDED_YT_DLP_ASM}"
+            ${FIAMY_EMBEDDED_YT_DLP_FILES}
+        COMMENT "Embedding yt-dlp binaries"
+        VERBATIM
+    )
+    add_custom_target(fiamy_embedded_ytdlp_obj
+        DEPENDS "${FIAMY_EMBEDDED_YT_DLP_OBJ}" "${FIAMY_EMBEDDED_YT_DLP_AARCH64_OBJ}")
+    add_dependencies(Fiamy fiamy_embedded_ytdlp_obj)
+    set_source_files_properties("${FIAMY_EMBEDDED_YT_DLP_OBJ}"
+        PROPERTIES EXTERNAL_OBJECT TRUE GENERATED TRUE)
+    target_sources(Fiamy PRIVATE "${FIAMY_EMBEDDED_YT_DLP_OBJ}")
+    target_compile_definitions(Fiamy PRIVATE FIAMY_EMBEDDED_YT_DLP=1)
+endif()
 
 add_library(miniaudio INTERFACE)
 target_include_directories(miniaudio INTERFACE

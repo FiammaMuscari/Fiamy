@@ -16,6 +16,7 @@ Window {
 
     flags: Qt.FramelessWindowHint | Qt.Window | Qt.WindowStaysOnTopHint
 
+    property bool disableAutoplay: typeof fiamyDisableAutoplay !== "undefined" && fiamyDisableAutoplay
     property bool isMinimizedMode: false
     property real normalWidth: 420
     property real normalHeight: 720
@@ -231,8 +232,14 @@ Window {
             console.log("✅ Stream agregado. Total en cola:", playlistCount)
 
             if (currentIndex < 0) {
-                console.log("▶️ Iniciando reproducción automática")
-                playSong(0)
+                if (mainWindow.disableAutoplay) {
+                    currentIndex = 0
+                    refreshCurrentSongName()
+                    console.log("⏸️ Autoplay deshabilitado por entorno")
+                } else {
+                    console.log("▶️ Iniciando reproducción automática")
+                    playSong(0)
+                }
             }
         }
 
