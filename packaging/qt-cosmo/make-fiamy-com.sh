@@ -125,6 +125,13 @@ die() {
     exit 1
 }
 
+install_qt_module() {
+    local build_dir="$1"
+
+    cmake --install "$build_dir"
+    "$PKG_DIR/copy-fat-sidecars.sh" "$build_dir" "$QT_PREFIX"
+}
+
 require_command() {
     command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
 }
@@ -352,7 +359,7 @@ build_qtbase() {
         -DFEATURE_stack_clash_protection=OFF
 
     cmake --build "$QTBASE_BUILD" --parallel "$JOBS"
-    cmake --install "$QTBASE_BUILD"
+    install_qt_module "$QTBASE_BUILD"
 }
 
 prepare_ffmpeg_source() {
@@ -442,7 +449,7 @@ build_qtdeclarative() {
         -DQT_FEATURE_qml_jit=OFF
 
     cmake --build "$QTDECLARATIVE_BUILD" --parallel "$JOBS"
-    cmake --install "$QTDECLARATIVE_BUILD"
+    install_qt_module "$QTDECLARATIVE_BUILD"
 }
 
 build_qtmultimedia() {
@@ -475,7 +482,7 @@ build_qtmultimedia() {
         -DQT_FEATURE_pipewire=OFF
 
     cmake --build "$QTMULTIMEDIA_BUILD" --parallel "$JOBS"
-    cmake --install "$QTMULTIMEDIA_BUILD"
+    install_qt_module "$QTMULTIMEDIA_BUILD"
 }
 
 build_app() {
