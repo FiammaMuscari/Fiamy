@@ -157,12 +157,14 @@ if(UNIX AND NOT APPLE)
     configure_file("${FIAMY_LINUX_DESKTOP_TEMPLATE}" "${FIAMY_LINUX_DESKTOP_FILE}" @ONLY)
 
     install(TARGETS Fiamy RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-    qt_generate_deploy_app_script(
-        TARGET Fiamy
-        OUTPUT_SCRIPT FiamyDeployScript
-        NO_UNSUPPORTED_PLATFORM_ERROR
-    )
-    install(SCRIPT "${FiamyDeployScript}")
+    if(COMMAND qt_generate_deploy_app_script)
+        qt_generate_deploy_app_script(
+            TARGET Fiamy
+            OUTPUT_SCRIPT FiamyDeployScript
+            NO_UNSUPPORTED_PLATFORM_ERROR
+        )
+        install(SCRIPT "${FiamyDeployScript}")
+    endif()
     install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/pink.png"
         DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/256x256/apps"
         RENAME fiamy.png
