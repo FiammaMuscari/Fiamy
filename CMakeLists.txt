@@ -52,13 +52,44 @@ endif()
 find_package(Qt6 ${FIAMY_MIN_QT_VERSION} REQUIRED COMPONENTS ${FIAMY_QT_COMPONENTS})
 
 if(COSMOPOLITAN)
+    set(FIAMY_QT_HOST_PREFIX "" CACHE PATH
+        "Host Qt install prefix used for build-time Qt tools in Cosmopolitan builds")
+    if(NOT FIAMY_QT_HOST_PREFIX AND DEFINED QT_HOST_PATH)
+        set(FIAMY_QT_HOST_PREFIX "${QT_HOST_PATH}")
+    endif()
+    if(NOT FIAMY_QT_HOST_PREFIX)
+        if(EXISTS "/opt/homebrew")
+            set(FIAMY_QT_HOST_PREFIX "/opt/homebrew")
+        elseif(EXISTS "/usr/local")
+            set(FIAMY_QT_HOST_PREFIX "/usr/local")
+        elseif(EXISTS "/usr")
+            set(FIAMY_QT_HOST_PREFIX "/usr")
+        endif()
+    endif()
+
+    set(FIAMY_QT_HOST_PACKAGE_PATHS)
+    if(FIAMY_QT_HOST_PREFIX)
+        list(APPEND FIAMY_QT_HOST_PACKAGE_PATHS
+            "${FIAMY_QT_HOST_PREFIX}"
+            "${FIAMY_QT_HOST_PREFIX}/lib/cmake"
+        )
+        file(GLOB FIAMY_QT_HOST_MULTIARCH_CMAKE_DIRS
+            "${FIAMY_QT_HOST_PREFIX}/lib/*/cmake"
+            "${FIAMY_QT_HOST_PREFIX}/Cellar/qtshadertools/*"
+            "${FIAMY_QT_HOST_PREFIX}/opt/qtshadertools"
+        )
+        list(APPEND FIAMY_QT_HOST_PACKAGE_PATHS
+            ${FIAMY_QT_HOST_MULTIARCH_CMAKE_DIRS}
+        )
+    endif()
+
     find_package(Qt6QmlTools REQUIRED CONFIG
-        PATHS /opt/homebrew
+        PATHS ${FIAMY_QT_HOST_PACKAGE_PATHS}
         NO_DEFAULT_PATH
         NO_CMAKE_FIND_ROOT_PATH
     )
     find_package(Qt6ShaderTools REQUIRED CONFIG
-        PATHS /opt/homebrew/Cellar/qtshadertools/6.10.2 /opt/homebrew
+        PATHS ${FIAMY_QT_HOST_PACKAGE_PATHS}
         NO_DEFAULT_PATH
         NO_CMAKE_FIND_ROOT_PATH
     )
@@ -337,7 +368,10 @@ if(FIAMY_EMBEDDED_YT_DLP_FILES)
         message(FATAL_ERROR "FIAMY_EMBED_YT_DLP currently requires the Cosmopolitan build")
     endif()
 
-    set(FIAMY_COSMO_BIN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/dist/tools/cosmocc/bin")
+    if(NOT COSMOCC_ROOT)
+        set(COSMOCC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/dist/tools/cosmocc")
+    endif()
+    set(FIAMY_COSMO_BIN_DIR "${COSMOCC_ROOT}/bin")
     set(FIAMY_EMBEDDED_YT_DLP_OBJ "${CMAKE_CURRENT_BINARY_DIR}/embedded_ytdlp.o")
     set(FIAMY_EMBEDDED_YT_DLP_AARCH64_OBJ
         "${CMAKE_CURRENT_BINARY_DIR}/.aarch64/embedded_ytdlp.o")
