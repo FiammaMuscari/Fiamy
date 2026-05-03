@@ -3,7 +3,7 @@ project(Fiamy VERSION 1.0.2 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(FIAMY_MIN_QT_VERSION "6.2" CACHE STRING "Minimum Qt version required to build Fiamy")
+set(FIAMY_MIN_QT_VERSION "6.8" CACHE STRING "Minimum Qt version required to build Fiamy")
 
 find_package(Qt6 ${FIAMY_MIN_QT_VERSION} REQUIRED COMPONENTS
     Core

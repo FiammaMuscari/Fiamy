@@ -23,6 +23,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          modules: 'qtmultimedia'
+          cache: true
+
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update
@@ -35,15 +42,8 @@ jobs:
             wget \
             yt-dlp \
             libgl-dev \
-            libqt6opengl6-dev \
             libxkbcommon-dev \
-            libopengl-dev \
-            qt6-base-dev \
-            qt6-base-dev-tools \
-            qt6-declarative-dev \
-            qt6-declarative-dev-tools \
-            qt6-multimedia-dev \
-            qt6-wayland
+            libopengl-dev
 
       - name: Build portable Linux bundle
         run: ./packaging/linux/package-portable.sh
