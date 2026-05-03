@@ -1,0 +1,46 @@
+#!/bin/sh
+set -eu
+
+if [ -z "${COSMOCC_ROOT:-}" ]; then
+    script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+    repo_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
+    COSMOCC_ROOT="$repo_root/dist/tools/cosmocc"
+fi
+
+bin="$COSMOCC_ROOT/bin"
+x86_ranlib="$bin/x86_64-linux-cosmo-ranlib"
+aarch64_ranlib="$bin/aarch64-linux-cosmo-ranlib"
+
+opts=
+archives=
+for arg do
+    case "$arg" in
+        -*)
+            opts="$opts $arg"
+            ;;
+        *)
+            archives="$archives $arg"
+            ;;
+    esac
+done
+
+"$x86_ranlib" "$@"
+
+for archive in $archives; do
+    if [ ! -f "$archive" ]; then
+        continue
+    fi
+
+    archive_dir=${archive%/*}
+    archive_base=${archive##*/}
+    if [ "$archive_dir" = "$archive" ]; then
+        sidecar=".aarch64/$archive_base"
+    else
+        sidecar="$archive_dir/.aarch64/$archive_base"
+    fi
+
+    if [ -f "$sidecar" ]; then
+        # shellcheck disable=SC2086
+        "$aarch64_ranlib" $opts "$sidecar"
+    fi
+done

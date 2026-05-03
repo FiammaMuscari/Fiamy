@@ -8,17 +8,18 @@ import Fiamy 1.0
 
 Window {
     id: mainWindow
-    width: 360
-    height: 680
+    width: 420
+    height: 720
     visible: true
     title: "Pastel MP3 ♡"
     color: "transparent"
 
     flags: Qt.FramelessWindowHint | Qt.Window | Qt.WindowStaysOnTopHint
 
+    property bool disableAutoplay: typeof fiamyDisableAutoplay !== "undefined" && fiamyDisableAutoplay
     property bool isMinimizedMode: false
-    property real normalWidth: 360
-    property real normalHeight: 680
+    property real normalWidth: 420
+    property real normalHeight: 720
     property real bookmarkWidth: 50
     property real bookmarkHeight: 180
 
@@ -39,6 +40,27 @@ Window {
         property alias volume: audioOutput.volume
         property real currentPosition: 0
         property real currentDuration: 0
+        property string currentSongName: "Title"
+        property string currentSongTitle: "Title"
+        property string currentSongAuthor: ""
+
+        function refreshCurrentSongName() {
+            if (currentIndex >= 0 && currentIndex < playlistCount) {
+                var song = playlist[currentIndex]
+                currentSongTitle = song.title || song.name.replace(/\.(mp3|m4a|mp4|aac|webm|opus|ogg|flac|wav)$/i, "")
+                currentSongAuthor = song.author || ""
+                currentSongName = currentSongTitle + (currentSongAuthor.length > 0 ? " - " + currentSongAuthor : "")
+            } else {
+                currentSongTitle = "Title"
+                currentSongAuthor = ""
+                currentSongName = "Title"
+            }
+            console.log("🎧 UI title:", currentSongName, "index:", currentIndex, "count:", playlistCount)
+        }
+
+        onCurrentIndexChanged: refreshCurrentSongName()
+        onPlaylistChanged: refreshCurrentSongName()
+        onPlaylistCountChanged: refreshCurrentSongName()
 
         function getPosition() {
             return currentPosition
@@ -109,6 +131,7 @@ Window {
                     player.stop()
                     currentIndex = -1
                     isPlaying = false
+                    refreshCurrentSongName()
                 }
             } else if (index < currentIndex) {
                 currentIndex--
@@ -133,6 +156,7 @@ Window {
                 isPlaying = false
                 currentPosition = 0
                 currentDuration = 0
+                refreshCurrentSongName()
             }
         }
 
@@ -170,17 +194,25 @@ Window {
                 return
             }
 
-            var cleanTitle = title ? title.replace(".mp3", "") : "YouTube Stream"
-            var displayName = cleanTitle + (author ? " - " + author : " - YouTube")
+            var cleanTitle = title ? title.replace(/\.(mp3|m4a|mp4|aac|webm|opus|ogg|flac|wav)$/i, "") : "YouTube Stream"
+            var cleanAuthor = author || "YouTube"
+            var displayName = cleanTitle + (cleanAuthor.length > 0 ? " - " + cleanAuthor : "")
+            var sourceUrl = String(url)
+            if (sourceUrl.length > 0 && sourceUrl[0] === "/" && sourceUrl.indexOf("file://") !== 0) {
+                sourceUrl = "file://" + sourceUrl
+            }
 
             var newSong = {
-                "url": url.toString(),
-                "name": displayName
+                "url": sourceUrl,
+                "name": displayName,
+                "title": cleanTitle,
+                "author": cleanAuthor,
+                "source": "YouTube"
             }
 
             console.log("➕ Agregando stream:", displayName)
 
-            var tempPlaylist = playlist
+            var tempPlaylist = playlist.slice()
             var insertPos
 
             if (isFromPlaylist === true) {
@@ -195,12 +227,19 @@ Window {
 
             playlist = tempPlaylist
             playlistCount = playlist.length
+            refreshCurrentSongName()
 
             console.log("✅ Stream agregado. Total en cola:", playlistCount)
 
             if (currentIndex < 0) {
-                console.log("▶️ Iniciando reproducción automática")
-                playSong(0)
+                if (mainWindow.disableAutoplay) {
+                    currentIndex = 0
+                    refreshCurrentSongName()
+                    console.log("⏸️ Autoplay deshabilitado por entorno")
+                } else {
+                    console.log("▶️ Iniciando reproducción automática")
+                    playSong(0)
+                }
             }
         }
 
@@ -225,15 +264,19 @@ Window {
             }
         }
 
+        AudioOutput {
+            id: audioOutput
+            volume: 0.7
+        }
+
         MediaPlayer {
             id: player
-            audioOutput: AudioOutput { id: audioOutput; volume: 0.7 }
-
-            onDurationChanged: {
+            audioOutput: audioOutput
+            onDurationChanged: function(duration) {
                 playerManager.currentDuration = duration
             }
 
-            onPositionChanged: {
+            onPositionChanged: function(position) {
                 playerManager.currentPosition = position
             }
 
@@ -241,7 +284,7 @@ Window {
                 playerManager.isPlaying = (playbackState === MediaPlayer.PlayingState)
 
                 if (playbackState === MediaPlayer.StoppedState) {
-                    console.log("🔍 Player detenido - position:", position, "duration:", duration)
+                    console.log("🔍 Player detenido - position:", player.position, "duration:", player.duration)
                 }
             }
 
@@ -263,9 +306,13 @@ Window {
         function playSong(index) {
             if (index >= 0 && index < playlistCount) {
                 currentIndex = index
+                refreshCurrentSongName()
+                currentPosition = 0
+                currentDuration = 0
                 player.stop()
                 player.source = playlist[index].url
                 player.play()
+                console.log("▶️ Reproduciendo:", currentSongName, "source:", playlist[index].url)
             }
         }
 
@@ -281,7 +328,10 @@ Window {
 
                 tempPlaylist.push({
                     "url": fileUrl,
-                    "name": fileName
+                    "name": fileName,
+                    "title": fileName.replace(/\.(mp3|m4a|mp4|aac|webm|opus|ogg|flac|wav)$/i, ""),
+                    "author": "",
+                    "source": "Local file"
                 })
                 added++
             }
@@ -298,6 +348,10 @@ Window {
             } else {
                 player.stop()
                 isPlaying = false
+                currentPosition = 0
+                currentDuration = 0
+                currentIndex = -1
+                refreshCurrentSongName()
             }
         }
 
@@ -320,9 +374,7 @@ Window {
         function canAddMore() { return playlistCount < maxPlaylistSize }
         function getRemainingSlots() { return maxPlaylistSize - playlistCount }
         function getCurrentSongName() {
-            return (currentIndex >= 0 && currentIndex < playlistCount)
-                   ? playlist[currentIndex].name.replace(/\.[^/.]+$/, "")
-                   : "Title"
+            return currentSongName
         }
     }
 
@@ -490,7 +542,7 @@ Window {
 
                 Text {
                     anchors.centerIn: parent
-                    text: "×"
+                    text: "x"
                     color: "#e0e0e0"
                     font.pixelSize: 24
                     font.bold: true
@@ -571,7 +623,7 @@ Window {
 
                 Text {
                     anchors.centerIn: parent
-                    text: playerManager.isPlaying ? "▶" : "||"
+                    text: playerManager.isPlaying ? "||" : ">"
                     color: playerManager.isPlaying ? "#0f172a" : "#94a3b8"
                     font.pixelSize: 12
                     font.bold: true
@@ -602,7 +654,7 @@ Window {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "|◄"
+                        text: "|<"
                         color: "#94a3b8"
                         font.pixelSize: 10
                     }
@@ -630,7 +682,7 @@ Window {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "►|"
+                        text: ">|"
                         color: "#94a3b8"
                         font.pixelSize: 10
                     }
@@ -660,7 +712,7 @@ Window {
 
                 Text {
                     anchors.centerIn: parent
-                    text: "□"
+                    text: "[]"
                     color: restoreArea.containsMouse ? "#0f172a" : "#94a3b8"
                     font.pixelSize: 14
                     font.bold: true
@@ -697,7 +749,7 @@ Window {
 
                 Text {
                     anchors.centerIn: parent
-                    text: "□"
+                    text: "[]"
                     color: restoreArea2.containsMouse ? "#0f172a" : "#94a3b8"
                     font.pixelSize: 14
                     font.bold: true
@@ -730,7 +782,7 @@ Window {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "|◄"
+                        text: "|<"
                         color: "#94a3b8"
                         font.pixelSize: 10
                     }
@@ -758,7 +810,7 @@ Window {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "►|"
+                        text: ">|"
                         color: "#94a3b8"
                         font.pixelSize: 10
                     }
@@ -788,7 +840,7 @@ Window {
 
                 Text {
                     anchors.centerIn: parent
-                    text: playerManager.isPlaying ? "▶" : "||"
+                    text: playerManager.isPlaying ? "||" : ">"
                     color: playerManager.isPlaying ? "#0f172a" : "#94a3b8"
                     font.pixelSize: 12
                     font.bold: true

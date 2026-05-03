@@ -34,28 +34,14 @@ Row {
             }
         }
 
-        contentItem: Item {
-            Canvas {
-                anchors.centerIn: parent
-                width: 20
-                height: 20
-                onPaint: {
-                    var ctx = getContext("2d")
-                    ctx.reset()
-                    ctx.fillStyle = parent.parent.parent.enabled ? "#FFFFFF" : "#606070"
-
-                    // Barra vertical izquierda
-                    ctx.fillRect(2, 3, 2, 14)
-
-                    // Triángulo apuntando a la izquierda
-                    ctx.beginPath()
-                    ctx.moveTo(17, 3)
-                    ctx.lineTo(17, 17)
-                    ctx.lineTo(7, 10)
-                    ctx.closePath()
-                    ctx.fill()
-                }
-            }
+        contentItem: Text {
+            text: "|<"
+            color: prevButton.enabled ? "#ffffff" : "#606070"
+            font.family: "Arial"
+            font.pixelSize: 18
+            font.bold: true
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
         }
 
         onClicked: {
@@ -106,33 +92,14 @@ Row {
             }
         }
 
-        contentItem: Item {
-            Canvas {
-                anchors.centerIn: parent
-                width: 18
-                height: 18
-                onPaint: {
-                    var ctx = getContext("2d")
-                    ctx.reset()
-                    ctx.fillStyle = parent.parent.parent.enabled ? "#FFFFFF" : "#606070"
-
-                    // Primera flecha (izquierda)
-                    ctx.beginPath()
-                    ctx.moveTo(8, 4)
-                    ctx.lineTo(8, 14)
-                    ctx.lineTo(3, 9)
-                    ctx.closePath()
-                    ctx.fill()
-
-                    // Segunda flecha (derecha)
-                    ctx.beginPath()
-                    ctx.moveTo(15, 4)
-                    ctx.lineTo(15, 14)
-                    ctx.lineTo(10, 9)
-                    ctx.closePath()
-                    ctx.fill()
-                }
-            }
+        contentItem: Text {
+            text: "-5"
+            color: seekBackButton.enabled ? "#ffffff" : "#606070"
+            font.family: "Arial"
+            font.pixelSize: 12
+            font.bold: true
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
         }
 
         onClicked: {
@@ -183,43 +150,14 @@ Row {
             }
         }
 
-        contentItem: Item {
-            Canvas {
-                id: playPauseCanvas
-                anchors.centerIn: parent
-                width: 28
-                height: 28
-
-                onPaint: {
-                    var ctx = getContext("2d")
-                    ctx.reset()
-                    ctx.fillStyle = root.playerManager && root.playerManager.isPlaying ? "#FFFFFF" : "#FFFFFF"
-
-                    if (root.playerManager && root.playerManager.isPlaying) {
-                        // PAUSA → dos barras
-                        ctx.fillRect(6, 4, 5, 20)
-                        ctx.fillRect(17, 4, 5, 20)
-                    } else {
-                        // PLAY → triángulo
-                        ctx.beginPath()
-                        ctx.moveTo(8, 4)
-                        ctx.lineTo(8, 24)
-                        ctx.lineTo(24, 14)
-                        ctx.closePath()
-                        ctx.fill()
-                    }
-                }
-
-                Component.onCompleted: requestPaint()
-
-                Connections {
-                    target: root.playerManager
-                    function onIsPlayingChanged() {
-                        playPauseCanvas.requestPaint()
-                    }
-                }
-            }
-
+        contentItem: Text {
+            text: root.playerManager && root.playerManager.isPlaying ? "||" : ">"
+            color: playButton.enabled ? "#ffffff" : "#606070"
+            font.family: "Arial"
+            font.pixelSize: root.playerManager && root.playerManager.isPlaying ? 24 : 34
+            font.bold: true
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
         }
 
         onClicked: {
@@ -270,33 +208,14 @@ Row {
             }
         }
 
-        contentItem: Item {
-            Canvas {
-                anchors.centerIn: parent
-                width: 18
-                height: 18
-                onPaint: {
-                    var ctx = getContext("2d")
-                    ctx.reset()
-                    ctx.fillStyle = parent.parent.parent.enabled ? "#FFFFFF" : "#606070"
-
-                    // Primera flecha (izquierda)
-                    ctx.beginPath()
-                    ctx.moveTo(3, 4)
-                    ctx.lineTo(3, 14)
-                    ctx.lineTo(8, 9)
-                    ctx.closePath()
-                    ctx.fill()
-
-                    // Segunda flecha (derecha)
-                    ctx.beginPath()
-                    ctx.moveTo(10, 4)
-                    ctx.lineTo(10, 14)
-                    ctx.lineTo(15, 9)
-                    ctx.closePath()
-                    ctx.fill()
-                }
-            }
+        contentItem: Text {
+            text: "+5"
+            color: seekForwardButton.enabled ? "#ffffff" : "#606070"
+            font.family: "Arial"
+            font.pixelSize: 12
+            font.bold: true
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
         }
 
         onClicked: {
@@ -338,28 +257,14 @@ Row {
             }
         }
 
-        contentItem: Item {
-            Canvas {
-                anchors.centerIn: parent
-                width: 20
-                height: 20
-                onPaint: {
-                    var ctx = getContext("2d")
-                    ctx.reset()
-                    ctx.fillStyle = parent.parent.parent.enabled ? "#FFFFFF" : "#606070"
-
-                    // Triángulo apuntando a la derecha
-                    ctx.beginPath()
-                    ctx.moveTo(3, 3)
-                    ctx.lineTo(3, 17)
-                    ctx.lineTo(13, 10)
-                    ctx.closePath()
-                    ctx.fill()
-
-                    // Barra vertical derecha
-                    ctx.fillRect(16, 3, 2, 14)
-                }
-            }
+        contentItem: Text {
+            text: ">|"
+            color: nextButton.enabled ? "#ffffff" : "#606070"
+            font.family: "Arial"
+            font.pixelSize: 18
+            font.bold: true
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
         }
 
         onClicked: {

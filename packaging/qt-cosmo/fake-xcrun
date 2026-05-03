@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" == "xcodebuild" && "${2:-}" == "-version" ]]; then
+  echo "Xcode 16.2"
+  echo "Build version 16C5032a"
+  exit 0
+fi
+
+exec /usr/bin/xcrun "$@"

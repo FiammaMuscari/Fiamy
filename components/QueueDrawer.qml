@@ -120,17 +120,27 @@ Rectangle {
                                     font.bold: isCurrent
                                 }
 
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: songData && songData.name ? songData.name.replace(/\.[^/.]+$/, "") : ""
-                                    color: isCurrent ? "#ffffff" : "#e0e0e0"
-                                    elide: Text.ElideRight
-                                    font.pixelSize: 12
-                                    wrapMode: Text.Wrap
-                                    maximumLineCount: 2
-                                }
-                            }
-                        }
+	                                Text {
+	                                    Layout.fillWidth: true
+	                                    text: songData && songData.title ? songData.title
+	                                          : (songData && songData.name ? songData.name.replace(/\.[^/.]+$/, "") : "")
+	                                    color: isCurrent ? "#ffffff" : "#e0e0e0"
+	                                    elide: Text.ElideRight
+	                                    font.pixelSize: 12
+	                                    wrapMode: Text.Wrap
+	                                    maximumLineCount: songData && songData.author ? 1 : 2
+	                                }
+
+	                                Text {
+	                                    Layout.fillWidth: true
+	                                    visible: songData && songData.author
+	                                    text: songData && songData.author ? songData.author : ""
+	                                    color: isCurrent ? "#d8f7f2" : "#94a3b8"
+	                                    elide: Text.ElideRight
+	                                    font.pixelSize: 10
+	                                }
+	                            }
+	                        }
 
                         Rectangle {
                             Layout.preferredWidth: 32
@@ -142,7 +152,7 @@ Rectangle {
 
                             Text {
                                 anchors.centerIn: parent
-                                text: "×"
+                                text: "x"
                                 color: "#ffffff"
                                 font.pixelSize: 20
                                 font.bold: true
@@ -188,7 +198,7 @@ Rectangle {
 
         Text {
             anchors.centerIn: parent
-            text: drawerOpen ? "◄" : "►"
+            text: drawerOpen ? "<" : ">"
             color: "#e0e0e0"
             font.pixelSize: 14
             font.bold: true

@@ -18,6 +18,17 @@
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QFileDevice>
+#include <QSysInfo>
+
+#ifdef __COSMOPOLITAN__
+extern "C" {
+#include <libc/dce.h>
+}
+#endif
+
+static constexpr qint64 kMinValidAudioSize = 100000;
+static constexpr quint32 kCacheIndexMagic = 0x4649414d; // FIAM
+static constexpr quint16 kCacheIndexVersion = 2;
 
 static QString appWritableDataDir()
 {
@@ -31,10 +42,14 @@ static QString appWritableDataDir()
 
 static QString downloadedYtDlpPath()
 {
+#ifdef __COSMOPOLITAN__
+    return appWritableDataDir() + "/bin/" + (IsWindows() ? "yt-dlp.exe" : "yt-dlp");
+#else
 #ifdef Q_OS_WIN
     return QCoreApplication::applicationDirPath() + "/yt-dlp.exe";
 #else
     return appWritableDataDir() + "/bin/yt-dlp";
+#endif
 #endif
 }
 
@@ -61,6 +76,166 @@ static bool isDownloadedYtDlpPath(const QString &path)
         == QFileInfo(downloadedYtDlpPath()).absoluteFilePath();
 }
 
+static bool isRunningWindows()
+{
+#ifdef __COSMOPOLITAN__
+    return IsWindows();
+#elif defined(Q_OS_WIN)
+    return true;
+#else
+    return false;
+#endif
+}
+
+static void makeYtDlpExecutable(const QString &path)
+{
+    if (isRunningWindows()) {
+        return;
+    }
+
+    QFile file(path);
+    file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner
+                        | QFileDevice::ReadGroup | QFileDevice::ExeGroup
+                        | QFileDevice::ReadOther | QFileDevice::ExeOther);
+}
+
+static bool isRunningArm64()
+{
+    const QString arch = QSysInfo::currentCpuArchitecture().toLower();
+    return arch == "arm64" || arch == "aarch64";
+}
+
+struct EmbeddedYtDlpPayload {
+    const unsigned char *start = nullptr;
+    const unsigned char *end = nullptr;
+    const char *name = nullptr;
+
+    qint64 size() const
+    {
+        return static_cast<qint64>(reinterpret_cast<quintptr>(end)
+                                  - reinterpret_cast<quintptr>(start));
+    }
+
+    bool isValid() const
+    {
+        return start && end && size() > 0;
+    }
+};
+
+#ifdef FIAMY_EMBEDDED_YT_DLP
+extern "C" {
+extern const unsigned char fiamy_embedded_ytdlp_linux_start[];
+extern const unsigned char fiamy_embedded_ytdlp_linux_end[];
+extern const unsigned char fiamy_embedded_ytdlp_linux_aarch64_start[];
+extern const unsigned char fiamy_embedded_ytdlp_linux_aarch64_end[];
+extern const unsigned char fiamy_embedded_ytdlp_macos_start[];
+extern const unsigned char fiamy_embedded_ytdlp_macos_end[];
+extern const unsigned char fiamy_embedded_ytdlp_windows_start[];
+extern const unsigned char fiamy_embedded_ytdlp_windows_end[];
+}
+#endif
+
+static EmbeddedYtDlpPayload embeddedYtDlpPayload()
+{
+#ifdef FIAMY_EMBEDDED_YT_DLP
+#ifdef __COSMOPOLITAN__
+    if (IsWindows()) {
+        return {fiamy_embedded_ytdlp_windows_start, fiamy_embedded_ytdlp_windows_end, "yt-dlp.exe"};
+    }
+    if (IsXnu()) {
+        return {fiamy_embedded_ytdlp_macos_start, fiamy_embedded_ytdlp_macos_end, "yt-dlp_macos"};
+    }
+    if (IsLinux()) {
+        if (isRunningArm64()) {
+            return {fiamy_embedded_ytdlp_linux_aarch64_start,
+                    fiamy_embedded_ytdlp_linux_aarch64_end,
+                    "yt-dlp_linux_aarch64"};
+        }
+        return {fiamy_embedded_ytdlp_linux_start, fiamy_embedded_ytdlp_linux_end, "yt-dlp_linux"};
+    }
+#elif defined(Q_OS_WIN)
+    return {fiamy_embedded_ytdlp_windows_start, fiamy_embedded_ytdlp_windows_end, "yt-dlp.exe"};
+#elif defined(Q_OS_MACOS)
+    return {fiamy_embedded_ytdlp_macos_start, fiamy_embedded_ytdlp_macos_end, "yt-dlp_macos"};
+#elif defined(Q_OS_LINUX)
+    if (isRunningArm64()) {
+        return {fiamy_embedded_ytdlp_linux_aarch64_start,
+                fiamy_embedded_ytdlp_linux_aarch64_end,
+                "yt-dlp_linux_aarch64"};
+    }
+    return {fiamy_embedded_ytdlp_linux_start, fiamy_embedded_ytdlp_linux_end, "yt-dlp_linux"};
+#endif
+#endif
+    return {};
+}
+
+static bool extractEmbeddedYtDlp(QString *extractedPath)
+{
+#ifdef FIAMY_EMBEDDED_YT_DLP
+    const EmbeddedYtDlpPayload payload = embeddedYtDlpPayload();
+    if (!payload.isValid()) {
+        return false;
+    }
+    const qint64 payloadSize = payload.size();
+
+    const QString targetPath = downloadedYtDlpPath();
+    QFileInfo targetInfo(targetPath);
+    QDir().mkpath(targetInfo.absolutePath());
+
+    if (isExecutableFile(targetPath) && QFileInfo(targetPath).size() == payloadSize) {
+        if (extractedPath) {
+            *extractedPath = targetPath;
+        }
+        return true;
+    }
+
+    const QString tempPath = targetPath + ".tmp";
+    QFile::remove(tempPath);
+
+    QFile output(tempPath);
+    if (!output.open(QIODevice::WriteOnly)) {
+        qWarning() << "⚠️ No se pudo extraer yt-dlp embebido:" << tempPath;
+        return false;
+    }
+    const qint64 written = output.write(reinterpret_cast<const char *>(payload.start), payloadSize);
+    output.close();
+    if (written != payloadSize) {
+        QFile::remove(tempPath);
+        qWarning() << "⚠️ Escritura incompleta al extraer yt-dlp embebido:" << payload.name;
+        return false;
+    }
+    makeYtDlpExecutable(tempPath);
+
+    QFile::remove(targetPath);
+    if (!QFile::rename(tempPath, targetPath)) {
+        QFile::remove(tempPath);
+        qWarning() << "⚠️ No se pudo instalar yt-dlp embebido:" << targetPath;
+        return false;
+    }
+    makeYtDlpExecutable(targetPath);
+
+    if (extractedPath) {
+        *extractedPath = targetPath;
+    }
+    qDebug() << "✅ yt-dlp embebido extraído:" << targetPath << "(" << payload.name << ")";
+    return true;
+#else
+    Q_UNUSED(extractedPath);
+    return false;
+#endif
+}
+
+static bool isEmbeddedYtDlpPath(const QString &path)
+{
+#ifdef FIAMY_EMBEDDED_YT_DLP
+    return QFileInfo(path).absoluteFilePath()
+        == QFileInfo(downloadedYtDlpPath()).absoluteFilePath();
+#else
+    Q_UNUSED(path);
+    return false;
+#endif
+}
+
 static QString bundledLinuxYtDlpPath()
 {
 #ifdef Q_OS_LINUX
@@ -80,8 +255,31 @@ static QString bundledLinuxYtDlpPath()
     return {};
 }
 
+static QString bundledMacYtDlpPath()
+{
+#ifdef Q_OS_MACOS
+    const QString appPath = QCoreApplication::applicationDirPath();
+    const QStringList candidates = {
+        appPath + "/yt-dlp",
+        QDir(appPath).absoluteFilePath("../Resources/yt-dlp")
+    };
+
+    for (const QString &candidate : candidates) {
+        if (isExecutableFile(candidate) && !isPythonYtDlpWrapper(candidate)) {
+            return QFileInfo(candidate).absoluteFilePath();
+        }
+    }
+#endif
+    return {};
+}
+
 static QString getYtDlpPath()
 {
+    QString embeddedPath;
+    if (extractEmbeddedYtDlp(&embeddedPath)) {
+        return embeddedPath;
+    }
+
     const QString systemPath = QStandardPaths::findExecutable("yt-dlp");
     if (!systemPath.isEmpty()) {
         return systemPath;
@@ -99,16 +297,145 @@ static QString getYtDlpPath()
     if (!bundledPath.isEmpty()) {
         return bundledPath;
     }
+    const QString bundledMacPath = bundledMacYtDlpPath();
+    if (!bundledMacPath.isEmpty()) {
+        return bundledMacPath;
+    }
     return downloadedPath;
 #endif
 }
 
 static QUrl ytDlpDownloadUrl()
 {
+#ifdef __COSMOPOLITAN__
+    if (IsWindows()) {
+        return QUrl("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe");
+    }
+    if (IsXnu()) {
+        return QUrl("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos");
+    }
+    if (IsLinux() && isRunningArm64()) {
+        return QUrl("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux_aarch64");
+    }
+    return QUrl("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux");
+#else
 #ifdef Q_OS_WIN
     return QUrl("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe");
+#elif defined(Q_OS_MACOS)
+    return QUrl("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos");
 #else
     return QUrl("https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux");
+#endif
+#endif
+}
+
+static QStringList playableAudioExtensions()
+{
+#ifdef __COSMOPOLITAN__
+    if (IsXnu()) {
+        return {"wav", "mp3", "flac"};
+    }
+    return {"m4a", "mp4", "mp3", "aac", "wav", "flac"};
+#elif defined(Q_OS_MACOS)
+    return {"mp4", "m4a", "mp3", "aac", "wav", "flac"};
+#else
+    return {"mp3", "m4a", "ogg", "opus", "flac", "wav", "webm"};
+#endif
+}
+
+static QStringList convertibleAudioExtensions()
+{
+#ifdef __COSMOPOLITAN__
+    if (IsXnu()) {
+        return {"m4a", "mp4", "aac"};
+    }
+#endif
+    return {};
+}
+
+static bool hasPlayableAudioExtension(const QString &filePath)
+{
+    const QString suffix = QFileInfo(filePath).suffix().toLower();
+    return playableAudioExtensions().contains(suffix);
+}
+
+static bool isValidAudioFile(const QString &filePath)
+{
+    QFileInfo info(filePath);
+    return info.exists() && info.isFile() && info.size() > kMinValidAudioSize
+        && hasPlayableAudioExtension(filePath);
+}
+
+static QString playableFileUrl(const QString &filePath)
+{
+    return QUrl::fromLocalFile(QFileInfo(filePath).absoluteFilePath()).toString();
+}
+
+static QString findExistingAudioFile(const QString &videoId, const QStringList &extensions)
+{
+    const QDir cacheDir(appWritableDataDir() + "/cache/audio");
+    for (const QString &extension : extensions) {
+        const QString candidate = cacheDir.filePath(videoId + "." + extension);
+        QFileInfo info(candidate);
+        if (info.exists() && info.isFile() && info.size() > kMinValidAudioSize) {
+            return candidate;
+        }
+    }
+    return {};
+}
+
+static QString convertToPlayableAudioIfNeeded(const QString &filePath)
+{
+#ifdef __COSMOPOLITAN__
+    if (!IsXnu() || filePath.isEmpty()) {
+        return filePath;
+    }
+
+    const QFileInfo inputInfo(filePath);
+    const QString suffix = inputInfo.suffix().toLower();
+    if (!convertibleAudioExtensions().contains(suffix)) {
+        return filePath;
+    }
+
+    const QString outputPath = inputInfo.dir().filePath(inputInfo.completeBaseName() + ".wav");
+    if (isValidAudioFile(outputPath)) {
+        return outputPath;
+    }
+
+    const QString afconvertPath = QStringLiteral("/usr/bin/afconvert");
+    if (!isExecutableFile(afconvertPath)) {
+        qWarning() << "⚠️ afconvert no disponible; no se puede convertir audio para APE/macOS";
+        return {};
+    }
+
+    const QString tempPath = outputPath + ".tmp";
+    QFile::remove(tempPath);
+
+    QProcess converter;
+    converter.setProgram(afconvertPath);
+    converter.setArguments({ filePath, tempPath, "-f", "WAVE", "-d", "LEI16@44100" });
+    converter.start();
+
+    if (!converter.waitForFinished(120000) || converter.exitStatus() != QProcess::NormalExit
+        || converter.exitCode() != 0) {
+        qWarning() << "⚠️ afconvert falló:"
+                   << QString::fromUtf8(converter.readAllStandardError()).trimmed();
+        QFile::remove(tempPath);
+        return {};
+    }
+
+    QFile::remove(outputPath);
+    if (!QFile::rename(tempPath, outputPath)) {
+        qWarning() << "⚠️ No se pudo mover WAV convertido a cache:" << outputPath;
+        QFile::remove(tempPath);
+        return {};
+    }
+
+    QFile::remove(filePath);
+    qDebug() << "✅ Audio convertido para APE/macOS:" << outputPath;
+    return outputPath;
+#else
+    return filePath;
 #endif
 }
 
@@ -116,13 +443,15 @@ static QUrl ytDlpDownloadUrl()
 
 QDataStream &operator<<(QDataStream &out, const CacheEntry &entry)
 {
-    out << entry.videoId << entry.filePath << entry.fileSize << entry.lastAccessed;
+    out << entry.videoId << entry.filePath << entry.title << entry.author
+        << entry.fileSize << entry.lastAccessed;
     return out;
 }
 
 QDataStream &operator>>(QDataStream &in, CacheEntry &entry)
 {
-    in >> entry.videoId >> entry.filePath >> entry.fileSize >> entry.lastAccessed;
+    in >> entry.videoId >> entry.filePath >> entry.title >> entry.author
+       >> entry.fileSize >> entry.lastAccessed;
     return in;
 }
 
@@ -149,8 +478,16 @@ YoutubeDownloader::YoutubeDownloader(QObject *parent)
 
     // Verificar/descargar yt-dlp al iniciar
     if (!QFile::exists(m_ytdlpPath)) {
-        qDebug() << "⬇️ yt-dlp no encontrado, descargando...";
-        downloadYtDlp();
+        QString embeddedPath;
+        if (extractEmbeddedYtDlp(&embeddedPath)) {
+            m_ytdlpPath = embeddedPath;
+            qDebug() << "✅ yt-dlp embebido listo:" << m_ytdlpPath;
+        } else {
+            qDebug() << "⬇️ yt-dlp no encontrado, descargando...";
+            downloadYtDlp();
+        }
+    } else if (isEmbeddedYtDlpPath(m_ytdlpPath)) {
+        qDebug() << "✅ yt-dlp embebido listo:" << m_ytdlpPath;
     } else if (isDownloadedYtDlpPath(m_ytdlpPath)) {
         qDebug() << "✅ yt-dlp app-managed encontrado";
         checkYtDlpVersion();
@@ -189,6 +526,14 @@ YoutubeDownloader::~YoutubeDownloader()
 
 void YoutubeDownloader::downloadYtDlp()
 {
+    QString embeddedPath;
+    if (extractEmbeddedYtDlp(&embeddedPath)) {
+        m_ytdlpPath = embeddedPath;
+        qDebug() << "✅ yt-dlp embebido listo";
+        emit ytdlpDownloading("✅ yt-dlp listo");
+        return;
+    }
+
     if (!isDownloadedYtDlpPath(m_ytdlpPath)) {
         m_ytdlpPath = downloadedYtDlpPath();
     }
@@ -222,9 +567,7 @@ void YoutubeDownloader::downloadYtDlp()
                 file.write(reply->readAll());
                 file.close();
 #ifndef Q_OS_WIN
-                file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner |
-                                    QFileDevice::ReadGroup | QFileDevice::ExeGroup |
-                                    QFileDevice::ReadOther | QFileDevice::ExeOther);
+                makeYtDlpExecutable(m_ytdlpPath);
 #endif
                 qDebug() << "✅ yt-dlp descargado correctamente";
                 emit ytdlpDownloading("✅ yt-dlp listo");
@@ -295,13 +638,35 @@ void YoutubeDownloader::loadCacheIndex()
     }
 
     QDataStream in(&file);
-    int count;
-    in >> count;
+    quint32 magic = 0;
+    in >> magic;
+
+    qint64 count = 0;
+    quint16 version = 1;
+    const bool hasHeader = magic == kCacheIndexMagic;
+    if (hasHeader) {
+        qint32 storedCount = 0;
+        in >> version >> storedCount;
+        count = storedCount;
+    } else {
+        file.seek(0);
+        in.setDevice(&file);
+        qsizetype storedCount = 0;
+        in >> storedCount;
+        count = storedCount;
+    }
 
     for (int i = 0; i < count; ++i) {
         QString key;
         CacheEntry entry;
-        in >> key >> entry;
+        in >> key;
+        if (hasHeader && version >= 2) {
+            in >> entry;
+        } else {
+            in >> entry.videoId >> entry.filePath >> entry.fileSize >> entry.lastAccessed;
+        }
+        if (entry.title.isEmpty())
+            entry.title = entry.videoId;
         m_cacheIndex[key] = entry;
     }
 
@@ -320,7 +685,7 @@ void YoutubeDownloader::saveCacheIndex()
     }
 
     QDataStream out(&file);
-    out << m_cacheIndex.size();
+    out << kCacheIndexMagic << kCacheIndexVersion << qint32(m_cacheIndex.size());
 
     for (auto it = m_cacheIndex.constBegin(); it != m_cacheIndex.constEnd(); ++it) {
         out << it.key() << it.value();
@@ -331,11 +696,17 @@ void YoutubeDownloader::saveCacheIndex()
 
 void YoutubeDownloader::updateCacheEntry(const QString &videoId,
                                          const QString &filePath,
-                                         qint64 size)
+                                         qint64 size,
+                                         const QString &title,
+                                         const QString &author)
 {
+    const CacheEntry previous = m_cacheIndex.value(videoId);
+
     CacheEntry entry;
     entry.videoId = videoId;
     entry.filePath = filePath;
+    entry.title = title.isEmpty() ? previous.title : title;
+    entry.author = author.isEmpty() ? previous.author : author;
     entry.fileSize = size;
     entry.lastAccessed = QDateTime::currentDateTime();
 
@@ -395,6 +766,52 @@ QString YoutubeDownloader::ensureAudioCacheDir()
     return cacheDir.absolutePath();
 }
 
+QString YoutubeDownloader::findCachedAudioFile(const QString &videoId)
+{
+    if (videoId.isEmpty()) {
+        return {};
+    }
+
+    if (m_cacheIndex.contains(videoId)) {
+        const QString indexedPath = m_cacheIndex.value(videoId).filePath;
+        if (isValidAudioFile(indexedPath)) {
+            return indexedPath;
+        }
+    }
+
+    const QDir cacheDir(ensureAudioCacheDir());
+    for (const QString &extension : playableAudioExtensions()) {
+        const QString candidate = cacheDir.filePath(videoId + "." + extension);
+        if (isValidAudioFile(candidate)) {
+            return candidate;
+        }
+    }
+
+    const QString convertible = findExistingAudioFile(videoId, convertibleAudioExtensions());
+    if (!convertible.isEmpty()) {
+        const QString converted = convertToPlayableAudioIfNeeded(convertible);
+        if (isValidAudioFile(converted)) {
+            return converted;
+        }
+    }
+
+    return {};
+}
+
+QString YoutubeDownloader::downloadOutputTemplate(const QString &videoId)
+{
+    return QDir(ensureAudioCacheDir()).filePath(videoId + ".%(ext)s");
+}
+
+bool YoutubeDownloader::shouldDownloadNativeAudio() const
+{
+#if defined(__COSMOPOLITAN__) || defined(Q_OS_MACOS)
+    return true;
+#else
+    return QStandardPaths::findExecutable("ffmpeg").isEmpty();
+#endif
+}
+
 bool YoutubeDownloader::isPlaylistUrl(const QString &url)
 {
     return !extractPlaylistId(url).isEmpty();
@@ -403,16 +820,21 @@ bool YoutubeDownloader::isPlaylistUrl(const QString &url)
 void YoutubeDownloader::calculateCurrentCacheSize()
 {
     m_currentCacheSize = 0;
+    bool removedMissingEntries = false;
 
-    for (auto it = m_cacheIndex.begin(); it != m_cacheIndex.end(); ++it) {
-        if (QFile::exists(it->filePath)) {
+    for (auto it = m_cacheIndex.begin(); it != m_cacheIndex.end();) {
+        if (isValidAudioFile(it->filePath)) {
             m_currentCacheSize += it->fileSize;
+            ++it;
         } else {
             qDebug() << "🔍 Faltante:" << it->videoId;
             it = m_cacheIndex.erase(it);
-            --it;
+            removedMissingEntries = true;
         }
     }
+
+    if (removedMissingEntries)
+        saveCacheIndex();
 
     qDebug() << "💾 Cache:"
              << QString::number(m_currentCacheSize / 1024.0 / 1024.0, 'f', 1) << "MB /"
@@ -467,11 +889,16 @@ bool YoutubeDownloader::makeSpaceForFile(qint64 estimatedSize)
 void YoutubeDownloader::getAudioUrl(const QString &youtubeUrl)
 {
     if (!QFile::exists(m_ytdlpPath)) {
-        emit errorOccurred("yt-dlp no encontrado. Descargando...");
-        qCritical() << "❌ yt-dlp.exe NO EXISTE, iniciando descarga";
-        m_ytdlpPath = downloadedYtDlpPath();
-        downloadYtDlp();
-        return;
+        QString embeddedPath;
+        if (extractEmbeddedYtDlp(&embeddedPath)) {
+            m_ytdlpPath = embeddedPath;
+        } else {
+            emit errorOccurred("yt-dlp no encontrado. Descargando...");
+            qCritical() << "❌ yt-dlp NO EXISTE, iniciando descarga";
+            m_ytdlpPath = downloadedYtDlpPath();
+            downloadYtDlp();
+            return;
+        }
     }
 
     m_downloadQueue.clear();
@@ -483,26 +910,32 @@ void YoutubeDownloader::getAudioUrl(const QString &youtubeUrl)
     QString videoId = extractVideoId(youtubeUrl);
 
     // ✅ Para URLs individuales: verificar cache y reproducir inmediatamente
-    if (!videoId.isEmpty() && m_cacheIndex.contains(videoId)) {
-        QString filePath = m_cacheIndex[videoId].filePath;
-        if (QFile::exists(filePath)) {
-            QFileInfo fi(filePath);
-            if (fi.size() > 100000) {
+    if (!m_isPlaylist && !videoId.isEmpty()) {
+        const QString filePath = findCachedAudioFile(videoId);
+        if (!filePath.isEmpty()) {
+            if (m_cacheIndex.contains(videoId)) {
                 m_cacheIndex[videoId].lastAccessed = QDateTime::currentDateTime();
                 saveCacheIndex();
+            } else {
+                updateCacheEntry(videoId, filePath, QFileInfo(filePath).size());
+            }
 
+            const CacheEntry entry = m_cacheIndex.value(videoId);
+            const bool hasMetadata = !entry.title.isEmpty() && entry.title != videoId;
+            if (hasMetadata) {
                 qDebug() << "⚡ CACHE HIT - Reproducción instantánea";
 
-                QString title = m_cacheIndex[videoId].videoId;
-
-                emit audioReady(filePath, title, "Cached");
+                emit audioReady(playableFileUrl(filePath), entry.title,
+                                entry.author.isEmpty() ? "Cached" : entry.author);
                 return;
-            } else {
-                QFile::remove(filePath);
-                m_cacheIndex.remove(videoId);
-                saveCacheIndex();
-                qDebug() << "🗑️ Cache corrupto eliminado";
             }
+
+            qDebug() << "⚡ CACHE HIT sin metadata; actualizando título";
+        } else if (m_cacheIndex.contains(videoId)) {
+            QFile::remove(m_cacheIndex[videoId].filePath);
+            m_cacheIndex.remove(videoId);
+            saveCacheIndex();
+            qDebug() << "🗑️ Cache corrupto eliminado";
         }
     }
 
@@ -555,6 +988,7 @@ void YoutubeDownloader::cancelDownload()
     m_downloadQueue.clear();
 
     emit downloadCountChanged(0, 0);
+    emit downloadProgressChanged(0, 0, 0, QString());
     emit progressUpdate("❌ Cancelled");
 
     qDebug() << "✅ Cancelación completa";
@@ -563,7 +997,14 @@ void YoutubeDownloader::cancelDownload()
 void YoutubeDownloader::clearCache()
 {
     QDir dir(ensureAudioCacheDir());
-    for (const QFileInfo &fi : dir.entryInfoList(QStringList() << "*.mp3")) {
+    QStringList filters;
+    const QStringList extensions = playableAudioExtensions() + convertibleAudioExtensions();
+    for (const QString &extension : extensions) {
+        filters << "*." + extension;
+    }
+    filters << "*.webm";
+
+    for (const QFileInfo &fi : dir.entryInfoList(filters, QDir::Files)) {
         QFile::remove(fi.absoluteFilePath());
     }
 
@@ -596,6 +1037,7 @@ void YoutubeDownloader::startNextDownload()
         m_downloadedCount = 0;
         m_totalToDownload = 0;
         emit downloadCountChanged(0, 0);
+        emit downloadProgressChanged(0, 0, 0, QString());
         return;
     }
 
@@ -603,40 +1045,60 @@ void YoutubeDownloader::startNextDownload()
         return;
 
     DownloadTask task = m_downloadQueue.dequeue();
-    QString filePath = ensureAudioCacheDir() + "/" + task.videoId + ".mp3";
+    QString filePath = findCachedAudioFile(task.videoId);
 
     // ✅ Si ya está en cache, emitir inmediatamente y continuar
-    if (m_cacheIndex.contains(task.videoId) && QFile::exists(filePath)) {
-        QFileInfo fi(filePath);
-        if (fi.size() > 100000) {
-            qDebug() << "♻️ Ya en cache, saltando:" << task.title;
-
-            m_downloadedCount++;
-            emit downloadCountChanged(m_downloadedCount, m_totalToDownload);
-            emit audioReady(filePath, task.title, task.author.isEmpty() ? "Cached" : task.author);
-
-            QTimer::singleShot(100, this, &YoutubeDownloader::startNextDownload);
-            return;
+    if (!filePath.isEmpty()) {
+        qDebug() << "♻️ Ya en cache, saltando:" << task.title;
+        if (m_cacheIndex.contains(task.videoId)) {
+            m_cacheIndex[task.videoId].lastAccessed = QDateTime::currentDateTime();
+            if (m_cacheIndex[task.videoId].title.isEmpty()
+                || m_cacheIndex[task.videoId].title == task.videoId) {
+                m_cacheIndex[task.videoId].title = task.title;
+            }
+            if (m_cacheIndex[task.videoId].author.isEmpty())
+                m_cacheIndex[task.videoId].author = task.author;
+            saveCacheIndex();
+        } else {
+            updateCacheEntry(task.videoId, filePath, QFileInfo(filePath).size(),
+                             task.title, task.author);
         }
+
+        m_downloadedCount++;
+        emit downloadProgressChanged(m_downloadedCount, m_totalToDownload, 100, task.title);
+        emit downloadCountChanged(m_downloadedCount, m_totalToDownload);
+        emit audioReady(playableFileUrl(filePath), task.title, task.author.isEmpty() ? "Cached" : task.author);
+
+        QTimer::singleShot(100, this, &YoutubeDownloader::startNextDownload);
+        return;
     }
 
     qint64 estimatedSize = 10 * 1024 * 1024;
 
     if (!makeSpaceForFile(estimatedSize)) {
         m_downloadedCount++;
+        emit downloadProgressChanged(m_downloadedCount, m_totalToDownload, 100, task.title);
         emit downloadCountChanged(m_downloadedCount, m_totalToDownload);
         QTimer::singleShot(0, this, &YoutubeDownloader::startNextDownload);
         return;
     }
 
+    const QString outputTemplate = downloadOutputTemplate(task.videoId);
+    const bool nativeAudio = shouldDownloadNativeAudio();
+
     QStringList args;
-    args << "-f" << "bestaudio/best"
-         << "-x"
-         << "--audio-format" << "mp3"
-         << "--audio-quality" << "5"
-         << "--no-playlist"
+    args << "-f";
+    if (nativeAudio) {
+        args << "bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/18/best[ext=mp4]";
+    } else {
+        args << "bestaudio/best"
+             << "-x"
+             << "--audio-format" << "mp3"
+             << "--audio-quality" << "5";
+    }
+    args << "--no-playlist"
          << "--newline"
-         << "-o" << filePath
+         << "-o" << outputTemplate
          << task.videoUrl;
 
     qDebug() << "================================================";
@@ -644,7 +1106,7 @@ void YoutubeDownloader::startNextDownload()
     qDebug() << "   Video ID:" << task.videoId;
     qDebug() << "   Título:" << task.title;
     qDebug() << "   URL:" << task.videoUrl;
-    qDebug() << "   Destino:" << filePath;
+    qDebug() << "   Destino:" << outputTemplate;
     qDebug() << "   Args:" << args.join(" ");
     qDebug() << "================================================";
 
@@ -666,6 +1128,7 @@ void YoutubeDownloader::startNextDownload()
                             .arg(m_downloadedCount + 1)
                             .arg(m_totalToDownload)
                             .arg(task.title));
+    emit downloadProgressChanged(m_downloadedCount + 1, m_totalToDownload, 0, task.title);
 
     m_currentDownloadProcess->start(m_ytdlpPath, args);
 }
@@ -673,7 +1136,12 @@ void YoutubeDownloader::startNextDownload()
 void YoutubeDownloader::onDownloadFinished(int exitCode,
                                            QProcess::ExitStatus status)
 {
-    QString filePath = ensureAudioCacheDir() + "/" + m_currentTask.videoId + ".mp3";
+    QString filePath = findCachedAudioFile(m_currentTask.videoId);
+    if (filePath.isEmpty()) {
+        const QString downloaded = findExistingAudioFile(
+                m_currentTask.videoId, playableAudioExtensions() + convertibleAudioExtensions());
+        filePath = convertToPlayableAudioIfNeeded(downloaded);
+    }
 
     qDebug() << "================================================";
     qDebug() << "📊 RESULTADO DE DESCARGA:";
@@ -681,9 +1149,10 @@ void YoutubeDownloader::onDownloadFinished(int exitCode,
     qDebug() << "   Título:" << m_currentTask.title;
     qDebug() << "   Exit Code:" << exitCode;
     qDebug() << "   Status:" << (status == QProcess::NormalExit ? "Normal" : "Crashed");
-    qDebug() << "   Archivo existe:" << QFile::exists(filePath);
+    qDebug() << "   Archivo detectado:" << filePath;
+    qDebug() << "   Archivo existe:" << (!filePath.isEmpty() && QFile::exists(filePath));
 
-    if (QFile::exists(filePath)) {
+    if (!filePath.isEmpty() && QFile::exists(filePath)) {
         QFileInfo fi(filePath);
         qDebug() << "   Tamaño archivo:" << fi.size() << "bytes ("
                  << QString::number(fi.size() / 1024.0 / 1024.0, 'f', 2) << "MB)";
@@ -704,27 +1173,35 @@ void YoutubeDownloader::onDownloadFinished(int exitCode,
     }
     qDebug() << "================================================";
 
-    if (status == QProcess::NormalExit && exitCode == 0 && QFile::exists(filePath)) {
+    if (status == QProcess::NormalExit && exitCode == 0 && !filePath.isEmpty() && QFile::exists(filePath)) {
         QFileInfo fi(filePath);
         qint64 fileSize = fi.size();
 
         if (fileSize > m_maxFileSize) {
             QFile::remove(filePath);
             qDebug() << "❌ Muy grande, eliminado";
-        } else if (fileSize < 100000) {
+            m_downloadedCount++;
+            emit downloadProgressChanged(m_downloadedCount, m_totalToDownload, 100, m_currentTask.title);
+            emit downloadCountChanged(m_downloadedCount, m_totalToDownload);
+        } else if (fileSize < kMinValidAudioSize) {
             QFile::remove(filePath);
             qDebug() << "❌ Descarga incompleta o corrupta (tamaño:" << fileSize << "bytes)";
+            m_downloadedCount++;
+            emit downloadProgressChanged(m_downloadedCount, m_totalToDownload, 100, m_currentTask.title);
+            emit downloadCountChanged(m_downloadedCount, m_totalToDownload);
         } else {
             m_currentCacheSize += fileSize;
-            updateCacheEntry(m_currentTask.videoId, filePath, fileSize);
+            updateCacheEntry(m_currentTask.videoId, filePath, fileSize,
+                             m_currentTask.title, m_currentTask.author);
 
             qDebug() << "✅ Descarga completa:" << QString::number(fileSize / 1024.0 / 1024.0, 'f', 1) << "MB";
 
             m_downloadedCount++;
+            emit downloadProgressChanged(m_downloadedCount, m_totalToDownload, 100, m_currentTask.title);
             emit downloadCountChanged(m_downloadedCount, m_totalToDownload);
 
             if (m_currentTask.emitWhenReady) {
-                emit audioReady(filePath, m_currentTask.title,
+                emit audioReady(playableFileUrl(filePath), m_currentTask.title,
                                 m_currentTask.author.isEmpty() ? "Desconocido" : m_currentTask.author);
             }
         }
@@ -732,9 +1209,10 @@ void YoutubeDownloader::onDownloadFinished(int exitCode,
         qWarning() << "⚠️ FALLÓ DESCARGA";
         qWarning() << "   Razón: Exit code" << exitCode << "| Status"
                    << (status == QProcess::NormalExit ? "Normal" : "Crashed");
-        qWarning() << "   Archivo generado:" << QFile::exists(filePath);
+        qWarning() << "   Archivo generado:" << (!filePath.isEmpty() && QFile::exists(filePath));
 
         m_downloadedCount++;
+        emit downloadProgressChanged(m_downloadedCount, m_totalToDownload, 100, m_currentTask.title);
         emit downloadCountChanged(m_downloadedCount, m_totalToDownload);
     }
 
@@ -784,8 +1262,6 @@ void YoutubeDownloader::onProcessFinished(int exitCode,
             QString title = e["title"].toString();
             QString author = e["uploader"].toString().isEmpty() ? "YouTube" : e["uploader"].toString();
 
-            QString filePath = ensureAudioCacheDir() + "/" + videoId + ".mp3";
-
             DownloadTask t;
             t.videoId = videoId;
             t.title = title;
@@ -795,13 +1271,8 @@ void YoutubeDownloader::onProcessFinished(int exitCode,
 
             m_downloadQueue.enqueue(t);
 
-            if (m_cacheIndex.contains(videoId) && QFile::exists(filePath)) {
-                QFileInfo fi(filePath);
-                if (fi.size() > 100000) {
-                    alreadyCached++;
-                } else {
-                    needsDownload++;
-                }
+            if (!findCachedAudioFile(videoId).isEmpty()) {
+                alreadyCached++;
             } else {
                 needsDownload++;
             }
@@ -848,10 +1319,17 @@ void YoutubeDownloader::onProcessError(QProcess::ProcessError error)
 {
     QString errorStr;
     switch(error) {
-    case QProcess::FailedToStart:
-        errorStr = "yt-dlp no pudo iniciar. Descargando...";
-        downloadYtDlp();
+    case QProcess::FailedToStart: {
+        QString embeddedPath;
+        if (extractEmbeddedYtDlp(&embeddedPath)) {
+            m_ytdlpPath = embeddedPath;
+            errorStr = "yt-dlp no pudo iniciar; binario embebido reinstalado";
+        } else {
+            errorStr = "yt-dlp no pudo iniciar. Descargando...";
+            downloadYtDlp();
+        }
         break;
+    }
     case QProcess::Crashed:
         errorStr = "yt-dlp se cerró inesperadamente";
         break;
@@ -877,16 +1355,27 @@ void YoutubeDownloader::onDownloadProgress()
 
     QString output = QString::fromUtf8(m_currentDownloadProcess->readAllStandardOutput());
 
-    QRegularExpression re("\\[download\\]\\s+(\\d+\\.?\\d*)%");
-    auto match = re.match(output);
+    QRegularExpression re("\\[download\\]\\s+(\\d+(?:\\.\\d+)?)%");
+    auto matches = re.globalMatch(output);
+
+    QRegularExpressionMatch match;
+    while (matches.hasNext()) {
+        match = matches.next();
+    }
 
     if (match.hasMatch()) {
         QString percent = match.captured(1);
+        bool ok = false;
+        const double percentValue = percent.toDouble(&ok);
         emit progressUpdate(QStringLiteral("⬇️ %1/%2 - %3% - %4").arg(
             QString::number(m_downloadedCount + 1),
             QString::number(m_totalToDownload),
             percent,
             m_currentTask.title));
+        emit downloadProgressChanged(m_downloadedCount + 1,
+                                     m_totalToDownload,
+                                     ok ? percentValue : 0,
+                                     m_currentTask.title);
     }
 }
 

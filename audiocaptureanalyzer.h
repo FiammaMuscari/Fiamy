@@ -6,6 +6,8 @@
 #include <QList>
 #include <QMutex>
 #include <QVariant>
+#include <QVector>
+#include <atomic>
 
 
 // Forward declaration
@@ -26,11 +28,14 @@ public:
     Q_INVOKABLE void stop();
     Q_INVOKABLE bool isRunning() const;
 
+    void ingestFloatSamples(const float *samples, int frames, int channels, int sampleRate);
+
 signals:
     void spectrumChanged();
 
 private:
-    void calculateFFT(const float* samples, int count);
+    void calculateFFT(const float *samples, int frames, int channels);
+    void notifySpectrumChanged();
     float hammingWindow(int n, int N);
 
     static void dataCallback(ma_device* pDevice, void* pOutput,
@@ -39,10 +44,12 @@ private:
     ma_device* m_device;
     QVariantList m_spectrum;
     mutable QMutex m_mutex;
-    bool m_isRunning;
+    std::atomic_bool m_isRunning;
+    std::atomic<qint64> m_lastAnalysisMs;
+    std::atomic_bool m_analysisQueued;
 
     static const int SPECTRUM_SIZE = 16;
-    static const int FFT_SIZE = 1024;
+    static const int FFT_SIZE = 256;
 };
 
 #endif // AUDIOCAPTUREANALYZER_H

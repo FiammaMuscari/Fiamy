@@ -56,7 +56,7 @@ RowLayout {
     // ===============================
     Button {
         id: removeButton
-        text: "×"
+        text: "x"
         Layout.preferredWidth: 42
         Layout.preferredHeight: 42
         enabled: root.playerManager && root.playerManager.currentIndex >= 0

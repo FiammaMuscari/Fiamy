@@ -1,0 +1,46 @@
+#!/bin/sh
+set -eu
+
+if [ -z "${COSMOCC_ROOT:-}" ]; then
+    script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+    repo_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
+    COSMOCC_ROOT="$repo_root/dist/tools/cosmocc"
+fi
+
+bin="$COSMOCC_ROOT/bin"
+real_ar="$bin/cosmoar"
+
+if [ "$#" -ge 2 ]; then
+    command_arg=
+    output=
+    for arg do
+        if [ -z "$command_arg" ]; then
+            case "$arg" in
+                --*) ;;
+                *)
+                    command_arg="$arg"
+                    ;;
+            esac
+        elif [ -z "$output" ]; then
+            output="$arg"
+            break
+        fi
+    done
+
+    case "$command_arg" in
+        *q*)
+            if [ -n "$output" ] && [ ! -f "$output" ]; then
+                archive_dir=${output%/*}
+                archive_base=${output##*/}
+                if [ "$archive_dir" = "$output" ]; then
+                    sidecar=".aarch64/$archive_base"
+                else
+                    sidecar="$archive_dir/.aarch64/$archive_base"
+                fi
+                rm -f "$sidecar"
+            fi
+            ;;
+    esac
+fi
+
+exec "$real_ar" "$@"

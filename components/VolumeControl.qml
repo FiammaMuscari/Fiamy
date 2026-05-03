@@ -21,8 +21,10 @@ RowLayout {
 
     Text {
         id: volumeIcon
-        text: volumeValue < 0.01 ? "🔇" : volumeValue < 0.5 ? "🔉" : "🔊"
-        font.pixelSize: 16
+        text: volumeValue < 0.01 ? "OFF" : volumeValue < 0.5 ? "LOW" : "VOL"
+        color: "#B0A8C0"
+        font.pixelSize: 11
+        font.bold: true
     }
 
     Item {
