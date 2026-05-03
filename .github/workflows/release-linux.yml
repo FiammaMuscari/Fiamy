@@ -35,6 +35,8 @@ jobs:
             wget \
             yt-dlp \
             libgl-dev \
+            libqt6opengl6-dev \
+            libxkbcommon-dev \
             libopengl-dev \
             qt6-base-dev \
             qt6-base-dev-tools \
