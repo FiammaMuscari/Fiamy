@@ -95,44 +95,6 @@ static void configureCosmopolitanApplicationFont()
         QGuiApplication::setFont(QFont(families.first(), 10));
 }
 
-static int vncPortFromEnvironment()
-{
-    const QString platform = QString::fromLocal8Bit(qgetenv("QT_QPA_PLATFORM"));
-    const QStringList parts = platform.split(':');
-    for (const QString &part : parts) {
-        if (!part.startsWith("port="))
-            continue;
-
-        bool ok = false;
-        const int port = part.mid(5).toInt(&ok);
-        if (ok && port > 0 && port < 65536)
-            return port;
-    }
-
-    return 5900;
-}
-
-static void openCosmopolitanVncViewer()
-{
-    if (!qEnvironmentVariableIsEmpty("FIAMY_NO_VNC_VIEWER"))
-        return;
-
-    if (QGuiApplication::platformName() != "vnc")
-        return;
-
-    const QString url = QStringLiteral("vnc://127.0.0.1:%1").arg(vncPortFromEnvironment());
-    qInfo().noquote() << "Fiamy Qt UI is available at" << url;
-
-    if (IsXnu()) {
-        QProcess::startDetached(QStringLiteral("open"), { url });
-    } else if (IsWindows()) {
-        QProcess::startDetached(QStringLiteral("cmd"), { QStringLiteral("/C"), QStringLiteral("start"),
-                                                         QString(), url });
-    } else if (IsLinux()) {
-        QProcess::startDetached(QStringLiteral("xdg-open"), { url });
-    }
-}
-
 static void scheduleCosmopolitanScreenshot(QQmlApplicationEngine &engine, QObject *parent)
 {
     const QByteArray screenshotPath = qgetenv("FIAMY_SCREENSHOT_PATH");
@@ -374,7 +336,6 @@ int main(int argc, char *argv[])
             });
         }
     }
-    QTimer::singleShot(1000, &app, openCosmopolitanVncViewer);
     scheduleCosmopolitanScreenshot(engine, &app);
 #endif
 

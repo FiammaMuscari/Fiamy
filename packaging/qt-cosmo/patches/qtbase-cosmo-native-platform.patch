@@ -2631,11 +2631,15 @@ index fec73e1987b..f2cad08f81b 100644
  protected:
      explicit QInputControl(Type type, QObjectPrivate &dd, QObject *parent = nullptr);
 diff --git a/src/plugins/platforms/CMakeLists.txt b/src/plugins/platforms/CMakeLists.txt
-index 69071a22c24..300a39f1253 100644
+index 69071a22c24..f2f97239124 100644
 --- a/src/plugins/platforms/CMakeLists.txt
 +++ b/src/plugins/platforms/CMakeLists.txt
-@@ -41,6 +41,9 @@ endif()
- if(QT_FEATURE_vnc AND TARGET Qt::Network)
+@@ -38,9 +38,12 @@ endif()
+ if(QT_FEATURE_linuxfb)
+     add_subdirectory(linuxfb)
+ endif()
+-if(QT_FEATURE_vnc AND TARGET Qt::Network)
++if(QT_FEATURE_vnc AND TARGET Qt::Network AND NOT COSMOPOLITAN)
      add_subdirectory(vnc)
  endif()
 +if(COSMOPOLITAN)
@@ -2729,22 +2733,30 @@ index 00000000000..a6d92d2d8a9
 +#include "main.moc"
 diff --git a/src/plugins/platforms/cosmonative/qcosmonativehost.cpp b/src/plugins/platforms/cosmonative/qcosmonativehost.cpp
 new file mode 100644
-index 00000000000..1c2bc138062
+index 00000000000..c99478c9ce4
 --- /dev/null
 +++ b/src/plugins/platforms/cosmonative/qcosmonativehost.cpp
-@@ -0,0 +1,1462 @@
+@@ -0,0 +1,1806 @@
 +// Copyright (C) 2026
 +// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 +
 +#include "qcosmonativehost.h"
 +
++#include <QtCore/QByteArray>
 +#include <QtCore/QCoreApplication>
 +#include <QtCore/QDebug>
++#include <QtCore/QFile>
 +#include <QtCore/QVarLengthArray>
++#include <QtCore/QVector>
 +
 +#include <algorithm>
++#include <cerrno>
 +#include <deque>
++#include <fcntl.h>
++#include <netinet/in.h>
 +#include <string.h>
++#include <sys/socket.h>
++#include <sys/un.h>
 +#include <unistd.h>
 +
 +extern "C" {
@@ -3770,9 +3782,143 @@ index 00000000000..1c2bc138062
 +}
 +
 +// -------------------------------------------------------------------------
-+// Linux/X11 host. It uses the system X11 client library as the native desktop
-+// transport because that is the stable host-window ABI most Linux desktops
-+// still expose for non-toolkit apps.
++// Linux/X11 host. This speaks the small subset of the X11 wire protocol that
++// QFbScreen needs, avoiding libX11 because dlopen() is unavailable under APE.
++
++static quint16 x11Le16(const uchar *p)
++{
++    return quint16(p[0]) | (quint16(p[1]) << 8);
++}
++
++static qint16 x11LeS16(const uchar *p)
++{
++    return qint16(x11Le16(p));
++}
++
++static quint32 x11Le32(const uchar *p)
++{
++    return quint32(p[0]) | (quint32(p[1]) << 8) | (quint32(p[2]) << 16)
++            | (quint32(p[3]) << 24);
++}
++
++static quint16 x11Be16(const uchar *p)
++{
++    return (quint16(p[0]) << 8) | quint16(p[1]);
++}
++
++static int x11Pad4(int value)
++{
++    return (value + 3) & ~3;
++}
++
++static void x11Append8(QByteArray *buffer, quint8 value)
++{
++    buffer->append(char(value));
++}
++
++static void x11Append16(QByteArray *buffer, quint16 value)
++{
++    buffer->append(char(value & 0xff));
++    buffer->append(char((value >> 8) & 0xff));
++}
++
++static void x11AppendS16(QByteArray *buffer, qint16 value)
++{
++    x11Append16(buffer, quint16(value));
++}
++
++static void x11Append32(QByteArray *buffer, quint32 value)
++{
++    buffer->append(char(value & 0xff));
++    buffer->append(char((value >> 8) & 0xff));
++    buffer->append(char((value >> 16) & 0xff));
++    buffer->append(char((value >> 24) & 0xff));
++}
++
++static void x11AppendPadded(QByteArray *buffer, const QByteArray &data)
++{
++    buffer->append(data);
++    while (buffer->size() % 4)
++        buffer->append('\0');
++}
++
++static QByteArray x11DisplayNumber(const QByteArray &display)
++{
++    const int colon = display.indexOf(':');
++    if (colon < 0)
++        return "0";
++    int end = colon + 1;
++    while (end < display.size() && display.at(end) >= '0' && display.at(end) <= '9')
++        ++end;
++    QByteArray number = display.mid(colon + 1, end - colon - 1);
++    return number.isEmpty() ? QByteArray("0") : number;
++}
++
++struct X11AuthCookie {
++    QByteArray name;
++    QByteArray data;
++};
++
++static X11AuthCookie x11ReadAuthCookie(const QByteArray &display)
++{
++    X11AuthCookie cookie;
++    QByteArray path = qgetenv("XAUTHORITY");
++    if (path.isEmpty()) {
++        const QByteArray home = qgetenv("HOME");
++        if (!home.isEmpty())
++            path = home + "/.Xauthority";
++    }
++    if (path.isEmpty())
++        return cookie;
++
++    QFile file(QString::fromLocal8Bit(path));
++    if (!file.open(QIODevice::ReadOnly))
++        return cookie;
++
++    const QByteArray bytes = file.readAll();
++    const QByteArray displayNo = x11DisplayNumber(display);
++    const uchar *p = reinterpret_cast<const uchar *>(bytes.constData());
++    const uchar *end = p + bytes.size();
++    X11AuthCookie firstMitCookie;
++    while (end - p >= 2) {
++        const quint16 family = x11Be16(p);
++        Q_UNUSED(family);
++        p += 2;
++        if (end - p < 2)
++            break;
++        const quint16 addressLen = x11Be16(p);
++        p += 2;
++        if (end - p < addressLen + 2)
++            break;
++        p += addressLen;
++        const quint16 numberLen = x11Be16(p);
++        p += 2;
++        if (end - p < numberLen + 2)
++            break;
++        const QByteArray number(reinterpret_cast<const char *>(p), numberLen);
++        p += numberLen;
++        const quint16 nameLen = x11Be16(p);
++        p += 2;
++        if (end - p < nameLen + 2)
++            break;
++        const QByteArray name(reinterpret_cast<const char *>(p), nameLen);
++        p += nameLen;
++        const quint16 dataLen = x11Be16(p);
++        p += 2;
++        if (end - p < dataLen)
++            break;
++        const QByteArray data(reinterpret_cast<const char *>(p), dataLen);
++        p += dataLen;
++
++        if (name != "MIT-MAGIC-COOKIE-1")
++            continue;
++        if (firstMitCookie.name.isEmpty())
++            firstMitCookie = { name, data };
++        if (number == displayNo)
++            return { name, data };
++    }
++    return firstMitCookie;
++}
 +
 +class QCosmoNativeX11Host final : public QCosmoNativeHost
 +{
@@ -3784,384 +3930,567 @@ index 00000000000..1c2bc138062
 +    QString errorString() const override { return m_error; }
 +
 +private:
-+    struct XAnyEvent {
-+        int type;
-+        unsigned long serial;
-+        int send_event;
-+        void *display;
-+        unsigned long window;
-+    };
-+    struct XButtonEvent {
-+        int type;
-+        unsigned long serial;
-+        int send_event;
-+        void *display;
-+        unsigned long window;
-+        unsigned long root;
-+        unsigned long subwindow;
-+        unsigned long time;
-+        int x;
-+        int y;
-+        int x_root;
-+        int y_root;
-+        unsigned int state;
-+        unsigned int button;
-+        int same_screen;
-+    };
-+    struct XKeyEvent {
-+        int type;
-+        unsigned long serial;
-+        int send_event;
-+        void *display;
-+        unsigned long window;
-+        unsigned long root;
-+        unsigned long subwindow;
-+        unsigned long time;
-+        int x;
-+        int y;
-+        int x_root;
-+        int y_root;
-+        unsigned int state;
-+        unsigned int keycode;
-+        int same_screen;
-+    };
-+    struct XConfigureEvent {
-+        int type;
-+        unsigned long serial;
-+        int send_event;
-+        void *display;
-+        unsigned long event;
-+        unsigned long window;
-+        int x;
-+        int y;
-+        int width;
-+        int height;
-+    };
-+    union XEvent {
-+        int type;
-+        char pad[192];
-+        XAnyEvent xany;
-+        XButtonEvent xbutton;
-+        XButtonEvent xmotion;
-+        XKeyEvent xkey;
-+        XConfigureEvent xconfigure;
-+    };
++    bool connectDisplay(const QByteArray &display);
++    bool writeAll(const QByteArray &bytes);
++    bool readFull(char *data, qsizetype size);
++    bool readSetup();
++    bool queryKeyboardMapping();
++    bool createWindow(const QSize &size, const QString &title);
++    quint32 allocateResource();
++    void sendDestroy(quint32 resource);
++    void translateEvent(const uchar *event, QCosmoNativeEventSink *sink);
++    void translateButton(quint8 button, qint16 x, qint16 y, bool pressed,
++                         QCosmoNativeEventSink *sink);
++    void translateKey(quint8 keycode, quint16 state, QEvent::Type type,
++                      QCosmoNativeEventSink *sink);
++    quint32 keysymForKeycode(quint8 keycode, bool shifted) const;
++    int qtKeyFromKeysym(quint32 keysym) const;
++    Qt::KeyboardModifiers modifiersFromState(quint16 state) const;
 +
-+    template <typename T>
-+    T loadX11(const char *name)
-+    {
-+        T fn = cosmoLoadFunction<T>(m_x11, name);
-+        if (!fn)
-+            m_error = lastCosmoDlError(name);
-+        return fn;
-+    }
-+
-+    bool ensureImage(const QImage &image);
-+    void translateEvent(const XEvent &event, QCosmoNativeEventSink *sink);
-+    void translateButton(const XButtonEvent &event, bool pressed, QCosmoNativeEventSink *sink);
-+    void translateKey(const XKeyEvent &event, QEvent::Type type, QCosmoNativeEventSink *sink);
-+
-+    typedef void *(*XOpenDisplayFn)(const char *);
-+    typedef int (*XCloseDisplayFn)(void *);
-+    typedef int (*XDefaultScreenFn)(void *);
-+    typedef unsigned long (*XRootWindowFn)(void *, int);
-+    typedef unsigned long (*XBlackPixelFn)(void *, int);
-+    typedef unsigned long (*XWhitePixelFn)(void *, int);
-+    typedef void *(*XDefaultVisualFn)(void *, int);
-+    typedef int (*XDefaultDepthFn)(void *, int);
-+    typedef unsigned long (*XCreateSimpleWindowFn)(void *, unsigned long, int, int, unsigned int,
-+                                                   unsigned int, unsigned int, unsigned long,
-+                                                   unsigned long);
-+    typedef int (*XStoreNameFn)(void *, unsigned long, const char *);
-+    typedef int (*XSelectInputFn)(void *, unsigned long, long);
-+    typedef int (*XMapWindowFn)(void *, unsigned long);
-+    typedef void *(*XCreateGCFn)(void *, unsigned long, unsigned long, void *);
-+    typedef int (*XFreeGCFn)(void *, void *);
-+    typedef int (*XDestroyWindowFn)(void *, unsigned long);
-+    typedef int (*XFlushFn)(void *);
-+    typedef int (*XPendingFn)(void *);
-+    typedef int (*XNextEventFn)(void *, XEvent *);
-+    typedef void *(*XCreateImageFn)(void *, void *, unsigned int, int, int, char *, unsigned int,
-+                                    unsigned int, int, int);
-+    typedef int (*XPutImageFn)(void *, unsigned long, void *, void *, int, int, int, int,
-+                               unsigned int, unsigned int);
-+    typedef int (*XLookupStringFn)(XKeyEvent *, char *, int, unsigned long *, void *);
-+
-+    void *m_x11 = nullptr;
-+    void *m_display = nullptr;
-+    void *m_visual = nullptr;
-+    void *m_gc = nullptr;
-+    void *m_ximage = nullptr;
-+    unsigned long m_window = 0;
-+    int m_screen = 0;
-+    int m_depth = 0;
++    int m_fd = -1;
++    quint32 m_resourceBase = 0;
++    quint32 m_resourceMask = 0;
++    quint32 m_resourceCounter = 1;
++    quint32 m_root = 0;
++    quint32 m_window = 0;
++    quint32 m_gc = 0;
++    quint32 m_whitePixel = 0xffffff;
++    quint32 m_blackPixel = 0x000000;
++    quint32 m_rootVisual = 0;
++    quint16 m_maxRequestLength = 65535;
++    quint8 m_depth = 24;
++    quint8 m_bitsPerPixel = 32;
++    quint8 m_minKeycode = 8;
++    quint8 m_keysymsPerKeycode = 0;
++    QVector<quint32> m_keysyms;
 +    QSize m_size;
-+    const uchar *m_imageBits = nullptr;
-+    int m_bytesPerLine = 0;
 +    Qt::MouseButtons m_buttons = Qt::NoButton;
++    QByteArray m_eventBuffer;
 +    QString m_error;
-+
-+    XOpenDisplayFn XOpenDisplay = nullptr;
-+    XCloseDisplayFn XCloseDisplay = nullptr;
-+    XDefaultScreenFn XDefaultScreen = nullptr;
-+    XRootWindowFn XRootWindow = nullptr;
-+    XBlackPixelFn XBlackPixel = nullptr;
-+    XWhitePixelFn XWhitePixel = nullptr;
-+    XDefaultVisualFn XDefaultVisual = nullptr;
-+    XDefaultDepthFn XDefaultDepth = nullptr;
-+    XCreateSimpleWindowFn XCreateSimpleWindow = nullptr;
-+    XStoreNameFn XStoreName = nullptr;
-+    XSelectInputFn XSelectInput = nullptr;
-+    XMapWindowFn XMapWindow = nullptr;
-+    XCreateGCFn XCreateGC = nullptr;
-+    XFreeGCFn XFreeGC = nullptr;
-+    XDestroyWindowFn XDestroyWindow = nullptr;
-+    XFlushFn XFlush = nullptr;
-+    XPendingFn XPending = nullptr;
-+    XNextEventFn XNextEvent = nullptr;
-+    XCreateImageFn XCreateImage = nullptr;
-+    XPutImageFn XPutImage = nullptr;
-+    XLookupStringFn XLookupString = nullptr;
 +};
 +
-+bool QCosmoNativeX11Host::initialize(const QSize &size, const QString &title)
++bool QCosmoNativeX11Host::connectDisplay(const QByteArray &display)
 +{
-+    m_x11 = cosmo_dlopen("libX11.so.6", RTLD_NOW | RTLD_GLOBAL);
-+    if (!m_x11)
-+        m_x11 = cosmo_dlopen("libX11.so", RTLD_NOW | RTLD_GLOBAL);
-+    if (!m_x11) {
-+        m_error = lastCosmoDlError("libX11");
++    const QByteArray effectiveDisplay = display.isEmpty() ? QByteArray(":0") : display;
++    const int colon = effectiveDisplay.indexOf(':');
++    if (colon < 0) {
++        m_error = "DISPLAY is not an X11 display string"_L1;
 +        return false;
 +    }
 +
-+    XOpenDisplay = loadX11<XOpenDisplayFn>("XOpenDisplay");
-+    XCloseDisplay = loadX11<XCloseDisplayFn>("XCloseDisplay");
-+    XDefaultScreen = loadX11<XDefaultScreenFn>("XDefaultScreen");
-+    XRootWindow = loadX11<XRootWindowFn>("XRootWindow");
-+    XBlackPixel = loadX11<XBlackPixelFn>("XBlackPixel");
-+    XWhitePixel = loadX11<XWhitePixelFn>("XWhitePixel");
-+    XDefaultVisual = loadX11<XDefaultVisualFn>("XDefaultVisual");
-+    XDefaultDepth = loadX11<XDefaultDepthFn>("XDefaultDepth");
-+    XCreateSimpleWindow = loadX11<XCreateSimpleWindowFn>("XCreateSimpleWindow");
-+    XStoreName = loadX11<XStoreNameFn>("XStoreName");
-+    XSelectInput = loadX11<XSelectInputFn>("XSelectInput");
-+    XMapWindow = loadX11<XMapWindowFn>("XMapWindow");
-+    XCreateGC = loadX11<XCreateGCFn>("XCreateGC");
-+    XFreeGC = loadX11<XFreeGCFn>("XFreeGC");
-+    XDestroyWindow = loadX11<XDestroyWindowFn>("XDestroyWindow");
-+    XFlush = loadX11<XFlushFn>("XFlush");
-+    XPending = loadX11<XPendingFn>("XPending");
-+    XNextEvent = loadX11<XNextEventFn>("XNextEvent");
-+    XCreateImage = loadX11<XCreateImageFn>("XCreateImage");
-+    XPutImage = loadX11<XPutImageFn>("XPutImage");
-+    XLookupString = loadX11<XLookupStringFn>("XLookupString");
-+    if (!XOpenDisplay || !XCloseDisplay || !XDefaultScreen || !XRootWindow || !XBlackPixel
-+        || !XWhitePixel || !XDefaultVisual || !XDefaultDepth || !XCreateSimpleWindow
-+        || !XStoreName || !XSelectInput || !XMapWindow || !XCreateGC || !XFreeGC
-+        || !XDestroyWindow || !XFlush || !XPending || !XNextEvent || !XCreateImage
-+        || !XPutImage || !XLookupString)
-+        return false;
++    const QByteArray host = effectiveDisplay.left(colon);
++    const int displayNumber = x11DisplayNumber(effectiveDisplay).toInt();
++    if (host.isEmpty() || host == "unix") {
++        m_fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
++        if (m_fd < 0) {
++            m_error = QString::fromLatin1("socket(AF_UNIX) failed: %1").arg(strerror(errno));
++            return false;
++        }
 +
-+    m_display = XOpenDisplay(nullptr);
-+    if (!m_display) {
-+        m_error = "XOpenDisplay failed; DISPLAY is not available"_L1;
++        sockaddr_un address = {};
++        address.sun_family = AF_UNIX;
++        const QByteArray path = QByteArray("/tmp/.X11-unix/X") + QByteArray::number(displayNumber);
++        qstrncpy(address.sun_path, path.constData(), sizeof(address.sun_path));
++        if (::connect(m_fd, reinterpret_cast<sockaddr *>(&address), sizeof(address)) != 0) {
++            m_error = QString::fromLatin1("connect(%1) failed: %2")
++                              .arg(QString::fromLocal8Bit(path), QString::fromLatin1(strerror(errno)));
++            ::close(m_fd);
++            m_fd = -1;
++            return false;
++        }
++        return true;
++    }
++
++    if (host != "localhost" && host != "127.0.0.1") {
++        m_error = QString::fromLatin1("unsupported X11 DISPLAY host: %1")
++                          .arg(QString::fromLocal8Bit(host));
 +        return false;
 +    }
 +
-+    m_screen = XDefaultScreen(m_display);
-+    m_visual = XDefaultVisual(m_display, m_screen);
-+    m_depth = XDefaultDepth(m_display, m_screen);
-+    const unsigned long root = XRootWindow(m_display, m_screen);
-+    m_window = XCreateSimpleWindow(m_display, root, 80, 80, size.width(), size.height(), 0,
-+                                   XBlackPixel(m_display, m_screen),
-+                                   XWhitePixel(m_display, m_screen));
++    m_fd = ::socket(AF_INET, SOCK_STREAM, 0);
++    if (m_fd < 0) {
++        m_error = QString::fromLatin1("socket(AF_INET) failed: %1").arg(strerror(errno));
++        return false;
++    }
++
++    sockaddr_in address = {};
++    address.sin_family = AF_INET;
++    address.sin_port = htons(quint16(6000 + displayNumber));
++    address.sin_addr.s_addr = htonl(0x7f000001u);
++    if (::connect(m_fd, reinterpret_cast<sockaddr *>(&address), sizeof(address)) != 0) {
++        m_error = QString::fromLatin1("connect(localhost:%1) failed: %2")
++                          .arg(6000 + displayNumber)
++                          .arg(QString::fromLatin1(strerror(errno)));
++        ::close(m_fd);
++        m_fd = -1;
++        return false;
++    }
++    return true;
++}
++
++bool QCosmoNativeX11Host::writeAll(const QByteArray &bytes)
++{
++    const char *data = bytes.constData();
++    qsizetype remaining = bytes.size();
++    while (remaining > 0) {
++        const ssize_t written = ::write(m_fd, data, size_t(remaining));
++        if (written < 0) {
++            if (errno == EINTR)
++                continue;
++            m_error = QString::fromLatin1("X11 write failed: %1").arg(strerror(errno));
++            return false;
++        }
++        data += written;
++        remaining -= written;
++    }
++    return true;
++}
++
++bool QCosmoNativeX11Host::readFull(char *data, qsizetype size)
++{
++    qsizetype remaining = size;
++    while (remaining > 0) {
++        const ssize_t got = ::read(m_fd, data, size_t(remaining));
++        if (got < 0) {
++            if (errno == EINTR)
++                continue;
++            m_error = QString::fromLatin1("X11 read failed: %1").arg(strerror(errno));
++            return false;
++        }
++        if (got == 0) {
++            m_error = "X11 server closed the connection"_L1;
++            return false;
++        }
++        data += got;
++        remaining -= got;
++    }
++    return true;
++}
++
++bool QCosmoNativeX11Host::readSetup()
++{
++    char header[8] = {};
++    if (!readFull(header, sizeof(header)))
++        return false;
++
++    const uchar *h = reinterpret_cast<const uchar *>(header);
++    const quint16 extraLength = x11Le16(h + 6);
++    QByteArray payload(extraLength * 4, Qt::Uninitialized);
++    if (!payload.isEmpty() && !readFull(payload.data(), payload.size()))
++        return false;
++
++    if (h[0] != 1) {
++        const int reasonLength = h[1];
++        m_error = QString::fromLatin1("X11 setup failed: %1")
++                          .arg(QString::fromLatin1(payload.constData(),
++                                                   qMin(reasonLength, payload.size())));
++        return false;
++    }
++
++    if (payload.size() < 40) {
++        m_error = "X11 setup reply is truncated"_L1;
++        return false;
++    }
++
++    const uchar *p = reinterpret_cast<const uchar *>(payload.constData());
++    m_resourceBase = x11Le32(p + 4);
++    m_resourceMask = x11Le32(p + 8);
++    m_maxRequestLength = x11Le16(p + 18);
++    const quint16 vendorLength = x11Le16(p + 16);
++    const quint8 rootsLength = p[20];
++    const quint8 pixmapFormatsLength = p[21];
++    m_minKeycode = p[26];
++    const quint8 maxKeycode = p[27];
++
++    const int pixmapOffset = 32 + x11Pad4(vendorLength);
++    const int screensOffset = pixmapOffset + pixmapFormatsLength * 8;
++    if (rootsLength == 0 || payload.size() < screensOffset + 40) {
++        m_error = "X11 setup reply has no screen"_L1;
++        return false;
++    }
++
++    const uchar *screen = p + screensOffset;
++    m_root = x11Le32(screen);
++    m_whitePixel = x11Le32(screen + 12);
++    m_blackPixel = x11Le32(screen + 16);
++    m_rootVisual = x11Le32(screen + 32);
++    m_depth = screen[38];
++    m_bitsPerPixel = 32;
++    for (int i = 0; i < pixmapFormatsLength; ++i) {
++        const uchar *format = p + pixmapOffset + i * 8;
++        if (format[0] == m_depth) {
++            m_bitsPerPixel = format[1];
++            break;
++        }
++    }
++
++    if (m_bitsPerPixel != 32) {
++        m_error = QString::fromLatin1("unsupported X11 framebuffer depth %1/%2")
++                          .arg(m_depth)
++                          .arg(m_bitsPerPixel);
++        return false;
++    }
++
++    m_keysyms.reserve(int(maxKeycode) - int(m_minKeycode) + 1);
++    return true;
++}
++
++bool QCosmoNativeX11Host::queryKeyboardMapping()
++{
++    if (m_minKeycode == 0)
++        return true;
++
++    const quint8 count = 248;
++    QByteArray request;
++    request.reserve(8);
++    x11Append8(&request, 101); // GetKeyboardMapping
++    x11Append8(&request, m_minKeycode);
++    x11Append16(&request, 2);
++    x11Append8(&request, count);
++    x11Append8(&request, 0);
++    x11Append16(&request, 0);
++    if (!writeAll(request))
++        return false;
++
++    char header[32] = {};
++    if (!readFull(header, sizeof(header)))
++        return false;
++
++    const uchar *h = reinterpret_cast<const uchar *>(header);
++    if (h[0] != 1)
++        return true;
++
++    m_keysymsPerKeycode = h[1];
++    const quint32 extraLength = x11Le32(h + 4);
++    QByteArray data(extraLength * 4, Qt::Uninitialized);
++    if (!data.isEmpty() && !readFull(data.data(), data.size()))
++        return false;
++
++    const int symbolCount = data.size() / 4;
++    m_keysyms.resize(symbolCount);
++    const uchar *p = reinterpret_cast<const uchar *>(data.constData());
++    for (int i = 0; i < symbolCount; ++i)
++        m_keysyms[i] = x11Le32(p + i * 4);
++    return true;
++}
++
++quint32 QCosmoNativeX11Host::allocateResource()
++{
++    const quint32 id = m_resourceBase | (m_resourceCounter & m_resourceMask);
++    ++m_resourceCounter;
++    return id;
++}
++
++bool QCosmoNativeX11Host::createWindow(const QSize &size, const QString &title)
++{
++    m_window = allocateResource();
++    m_gc = allocateResource();
++
++    constexpr quint32 keyPressMask = 1u << 0;
++    constexpr quint32 keyReleaseMask = 1u << 1;
++    constexpr quint32 buttonPressMask = 1u << 2;
++    constexpr quint32 buttonReleaseMask = 1u << 3;
++    constexpr quint32 pointerMotionMask = 1u << 6;
++    constexpr quint32 exposureMask = 1u << 15;
++    constexpr quint32 structureNotifyMask = 1u << 17;
++    const quint32 eventMask = keyPressMask | keyReleaseMask | buttonPressMask | buttonReleaseMask
++            | pointerMotionMask | exposureMask | structureNotifyMask;
++
++    QByteArray create;
++    create.reserve(40);
++    x11Append8(&create, 1); // CreateWindow
++    x11Append8(&create, 0); // CopyFromParent depth
++    x11Append16(&create, 10);
++    x11Append32(&create, m_window);
++    x11Append32(&create, m_root);
++    x11AppendS16(&create, 80);
++    x11AppendS16(&create, 80);
++    x11Append16(&create, quint16(size.width()));
++    x11Append16(&create, quint16(size.height()));
++    x11Append16(&create, 0);
++    x11Append16(&create, 1); // InputOutput
++    x11Append32(&create, 0); // CopyFromParent visual
++    x11Append32(&create, (1u << 1) | (1u << 11)); // CWBackPixel | CWEventMask
++    x11Append32(&create, m_blackPixel);
++    x11Append32(&create, eventMask);
++    if (!writeAll(create))
++        return false;
++
 +    const QByteArray titleUtf8 = title.toUtf8();
-+    XStoreName(m_display, m_window, titleUtf8.constData());
++    QByteArray property;
++    const int propertyPayload = x11Pad4(titleUtf8.size());
++    property.reserve(24 + propertyPayload);
++    x11Append8(&property, 18); // ChangeProperty
++    x11Append8(&property, 0); // Replace
++    x11Append16(&property, quint16((24 + propertyPayload) / 4));
++    x11Append32(&property, m_window);
++    x11Append32(&property, 39); // WM_NAME
++    x11Append32(&property, 31); // STRING
++    x11Append8(&property, 8);
++    x11Append8(&property, 0);
++    x11Append16(&property, 0);
++    x11Append32(&property, quint32(titleUtf8.size()));
++    x11AppendPadded(&property, titleUtf8);
++    if (!writeAll(property))
++        return false;
 +
-+    constexpr long keyPressMask = 1L << 0;
-+    constexpr long keyReleaseMask = 1L << 1;
-+    constexpr long buttonPressMask = 1L << 2;
-+    constexpr long buttonReleaseMask = 1L << 3;
-+    constexpr long pointerMotionMask = 1L << 6;
-+    constexpr long exposureMask = 1L << 15;
-+    constexpr long structureNotifyMask = 1L << 17;
-+    XSelectInput(m_display, m_window,
-+                 keyPressMask | keyReleaseMask | buttonPressMask | buttonReleaseMask
-+                         | pointerMotionMask | exposureMask | structureNotifyMask);
++    QByteArray gc;
++    gc.reserve(24);
++    x11Append8(&gc, 55); // CreateGC
++    x11Append8(&gc, 0);
++    x11Append16(&gc, 6);
++    x11Append32(&gc, m_gc);
++    x11Append32(&gc, m_window);
++    x11Append32(&gc, (1u << 2) | (1u << 3)); // foreground | background
++    x11Append32(&gc, m_whitePixel);
++    x11Append32(&gc, m_blackPixel);
++    if (!writeAll(gc))
++        return false;
 +
-+    m_gc = XCreateGC(m_display, m_window, 0, nullptr);
-+    XMapWindow(m_display, m_window);
-+    XFlush(m_display);
++    QByteArray map;
++    x11Append8(&map, 8); // MapWindow
++    x11Append8(&map, 0);
++    x11Append16(&map, 2);
++    x11Append32(&map, m_window);
++    if (!writeAll(map))
++        return false;
++
 +    m_size = size;
 +    return true;
 +}
 +
-+void QCosmoNativeX11Host::shutdown()
++bool QCosmoNativeX11Host::initialize(const QSize &size, const QString &title)
 +{
-+    if (m_display) {
-+        if (m_gc)
-+            XFreeGC(m_display, m_gc);
-+        if (m_window)
-+            XDestroyWindow(m_display, m_window);
-+        XCloseDisplay(m_display);
-+    }
-+    m_display = nullptr;
-+    m_gc = nullptr;
-+    m_window = 0;
-+}
++    const QByteArray display = qgetenv("DISPLAY").isEmpty() ? QByteArray(":0") : qgetenv("DISPLAY");
++    if (!connectDisplay(display))
++        return false;
 +
-+bool QCosmoNativeX11Host::ensureImage(const QImage &image)
-+{
-+    if (m_ximage && m_imageBits == image.bits() && m_size == image.size()
-+        && m_bytesPerLine == image.bytesPerLine())
-+        return true;
-+
-+    m_ximage = XCreateImage(m_display, m_visual, m_depth, 2, 0,
-+                            reinterpret_cast<char *>(const_cast<uchar *>(image.bits())),
-+                            image.width(), image.height(), 32, image.bytesPerLine());
-+    if (!m_ximage) {
-+        m_error = "XCreateImage failed"_L1;
++    const X11AuthCookie auth = x11ReadAuthCookie(display);
++    QByteArray setup;
++    setup.reserve(12 + x11Pad4(auth.name.size()) + x11Pad4(auth.data.size()));
++    x11Append8(&setup, 'l');
++    x11Append8(&setup, 0);
++    x11Append16(&setup, 11);
++    x11Append16(&setup, 0);
++    x11Append16(&setup, quint16(auth.name.size()));
++    x11Append16(&setup, quint16(auth.data.size()));
++    x11Append16(&setup, 0);
++    x11AppendPadded(&setup, auth.name);
++    x11AppendPadded(&setup, auth.data);
++    if (!writeAll(setup) || !readSetup() || !queryKeyboardMapping()
++        || !createWindow(size, title)) {
++        shutdown();
 +        return false;
 +    }
-+    m_imageBits = image.bits();
-+    m_size = image.size();
-+    m_bytesPerLine = image.bytesPerLine();
++
++    const int flags = fcntl(m_fd, F_GETFL, 0);
++    if (flags >= 0)
++        fcntl(m_fd, F_SETFL, flags | O_NONBLOCK);
 +    return true;
++}
++
++void QCosmoNativeX11Host::sendDestroy(quint32 resource)
++{
++    if (m_fd < 0 || !resource)
++        return;
++    QByteArray request;
++    x11Append8(&request, 4); // DestroyWindow
++    x11Append8(&request, 0);
++    x11Append16(&request, 2);
++    x11Append32(&request, resource);
++    writeAll(request);
++}
++
++void QCosmoNativeX11Host::shutdown()
++{
++    if (m_fd >= 0) {
++        sendDestroy(m_window);
++        ::close(m_fd);
++    }
++    m_fd = -1;
++    m_window = 0;
++    m_gc = 0;
 +}
 +
 +void QCosmoNativeX11Host::blit(const QImage &image, const QRegion &region)
 +{
-+    if (!m_display || !m_window || !ensureImage(image))
++    Q_UNUSED(region);
++    if (m_fd < 0 || !m_window || image.isNull())
 +        return;
 +
-+    for (const QRect &rect : region) {
-+        XPutImage(m_display, m_window, m_gc, m_ximage, rect.x(), rect.y(), rect.x(), rect.y(),
-+                  rect.width(), rect.height());
++    QImage converted;
++    const QImage *source = &image;
++    if (image.format() != QImage::Format_RGB32 && image.format() != QImage::Format_ARGB32
++        && image.format() != QImage::Format_ARGB32_Premultiplied) {
++        converted = image.convertToFormat(QImage::Format_RGB32);
++        source = &converted;
 +    }
-+    XFlush(m_display);
++
++    const int headerBytes = 24;
++    const int maxRequestBytes = qMax<int>(4096, int(m_maxRequestLength) * 4);
++    const int maxPayloadBytes = qMax<int>(source->bytesPerLine(), maxRequestBytes - headerBytes);
++    const int rowsPerRequest = qMax(1, maxPayloadBytes / source->bytesPerLine());
++    for (int y = 0; y < source->height(); y += rowsPerRequest) {
++        const int rows = qMin(rowsPerRequest, source->height() - y);
++        const int payloadBytes = source->bytesPerLine() * rows;
++        QByteArray request;
++        request.reserve(headerBytes + x11Pad4(payloadBytes));
++        x11Append8(&request, 72); // PutImage
++        x11Append8(&request, 2); // ZPixmap
++        x11Append16(&request, quint16((headerBytes + x11Pad4(payloadBytes)) / 4));
++        x11Append32(&request, m_window);
++        x11Append32(&request, m_gc);
++        x11Append16(&request, quint16(source->width()));
++        x11Append16(&request, quint16(rows));
++        x11AppendS16(&request, 0);
++        x11AppendS16(&request, qint16(y));
++        x11Append8(&request, 0);
++        x11Append8(&request, m_depth);
++        x11Append16(&request, 0);
++        request.append(reinterpret_cast<const char *>(source->constScanLine(y)), payloadBytes);
++        while (request.size() % 4)
++            request.append('\0');
++        if (!writeAll(request))
++            return;
++    }
 +}
 +
-+void QCosmoNativeX11Host::translateButton(const XButtonEvent &event, bool pressed,
++Qt::KeyboardModifiers QCosmoNativeX11Host::modifiersFromState(quint16 state) const
++{
++    Qt::KeyboardModifiers modifiers = Qt::NoModifier;
++    if (state & 0x01)
++        modifiers |= Qt::ShiftModifier;
++    if (state & 0x04)
++        modifiers |= Qt::ControlModifier;
++    if (state & 0x08)
++        modifiers |= Qt::AltModifier;
++    if (state & 0x40)
++        modifiers |= Qt::MetaModifier;
++    return modifiers;
++}
++
++quint32 QCosmoNativeX11Host::keysymForKeycode(quint8 keycode, bool shifted) const
++{
++    if (!m_keysymsPerKeycode || keycode < m_minKeycode)
++        return 0;
++    const int row = int(keycode) - int(m_minKeycode);
++    const int base = row * int(m_keysymsPerKeycode);
++    if (base < 0 || base >= m_keysyms.size())
++        return 0;
++    if (shifted && m_keysymsPerKeycode > 1 && base + 1 < m_keysyms.size()
++        && m_keysyms.at(base + 1))
++        return m_keysyms.at(base + 1);
++    return m_keysyms.at(base);
++}
++
++int QCosmoNativeX11Host::qtKeyFromKeysym(quint32 keysym) const
++{
++    switch (keysym) {
++    case 0xff08:
++        return Qt::Key_Backspace;
++    case 0xff09:
++        return Qt::Key_Tab;
++    case 0xff0d:
++        return Qt::Key_Return;
++    case 0xff1b:
++        return Qt::Key_Escape;
++    case 0xff51:
++        return Qt::Key_Left;
++    case 0xff52:
++        return Qt::Key_Up;
++    case 0xff53:
++        return Qt::Key_Right;
++    case 0xff54:
++        return Qt::Key_Down;
++    default:
++        break;
++    }
++    if (keysym >= 'a' && keysym <= 'z')
++        return Qt::Key_A + int(keysym - 'a');
++    if (keysym >= 'A' && keysym <= 'Z')
++        return Qt::Key_A + int(keysym - 'A');
++    if (keysym >= '0' && keysym <= '9')
++        return Qt::Key_0 + int(keysym - '0');
++    if (keysym == ' ')
++        return Qt::Key_Space;
++    return keysym >= 0x20 && keysym <= 0x7e ? int(keysym) : Qt::Key_unknown;
++}
++
++void QCosmoNativeX11Host::translateButton(quint8 button, qint16 x, qint16 y, bool pressed,
 +                                          QCosmoNativeEventSink *sink)
 +{
 +    if (!sink)
 +        return;
 +
-+    Qt::MouseButton button = Qt::NoButton;
-+    if (event.button == 1)
-+        button = Qt::LeftButton;
-+    else if (event.button == 2)
-+        button = Qt::MiddleButton;
-+    else if (event.button == 3)
-+        button = Qt::RightButton;
-+
-+    if (event.button == 4 || event.button == 5) {
-+        sink->handleHostWheel(QPointF(event.x, event.y), QPoint(0, event.button == 4 ? 120 : -120));
++    if (button == 4 || button == 5) {
++        sink->handleHostWheel(QPointF(x, y), QPoint(0, button == 4 ? 120 : -120));
 +        return;
 +    }
 +
-+    if (pressed)
-+        m_buttons |= button;
-+    else
-+        m_buttons &= ~button;
++    Qt::MouseButton qtButton = Qt::NoButton;
++    if (button == 1)
++        qtButton = Qt::LeftButton;
++    else if (button == 2)
++        qtButton = Qt::MiddleButton;
++    else if (button == 3)
++        qtButton = Qt::RightButton;
 +
-+    sink->handleHostMouse(QPointF(event.x, event.y), m_buttons, button,
++    if (pressed)
++        m_buttons |= qtButton;
++    else
++        m_buttons &= ~qtButton;
++    sink->handleHostMouse(QPointF(x, y), m_buttons, qtButton,
 +                          pressed ? QEvent::MouseButtonPress : QEvent::MouseButtonRelease);
 +}
 +
-+void QCosmoNativeX11Host::translateKey(const XKeyEvent &event, QEvent::Type type,
++void QCosmoNativeX11Host::translateKey(quint8 keycode, quint16 state, QEvent::Type type,
 +                                       QCosmoNativeEventSink *sink)
 +{
 +    if (!sink)
 +        return;
 +
-+    char buffer[16] = {};
-+    unsigned long keysym = 0;
-+    XKeyEvent copy = event;
-+    const int length = XLookupString(&copy, buffer, int(sizeof(buffer) - 1), &keysym, nullptr);
-+    QString text = length > 0 ? QString::fromUtf8(buffer, length) : QString();
-+
-+    int key = Qt::Key_unknown;
-+    switch (keysym) {
-+    case 0xff08:
-+        key = Qt::Key_Backspace;
-+        break;
-+    case 0xff09:
-+        key = Qt::Key_Tab;
-+        break;
-+    case 0xff0d:
-+        key = Qt::Key_Return;
-+        break;
-+    case 0xff1b:
-+        key = Qt::Key_Escape;
-+        break;
-+    case 0xff51:
-+        key = Qt::Key_Left;
-+        break;
-+    case 0xff52:
-+        key = Qt::Key_Up;
-+        break;
-+    case 0xff53:
-+        key = Qt::Key_Right;
-+        break;
-+    case 0xff54:
-+        key = Qt::Key_Down;
-+        break;
-+    default:
-+        key = qtKeyFromLatin1(text);
-+        break;
-+    }
-+
-+    Qt::KeyboardModifiers modifiers = Qt::NoModifier;
-+    if (event.state & 0x01)
-+        modifiers |= Qt::ShiftModifier;
-+    if (event.state & 0x04)
-+        modifiers |= Qt::ControlModifier;
-+    if (event.state & 0x08)
-+        modifiers |= Qt::AltModifier;
-+    if (event.state & 0x40)
-+        modifiers |= Qt::MetaModifier;
-+
-+    sink->handleHostKey(type, key, modifiers, text);
++    const bool shifted = state & 0x01;
++    const quint32 keysym = keysymForKeycode(keycode, shifted);
++    QString text;
++    if (keysym >= 0x20 && keysym <= 0x7e)
++        text = QString(QChar(ushort(keysym)));
++    sink->handleHostKey(type, qtKeyFromKeysym(keysym), modifiersFromState(state), text);
 +}
 +
-+void QCosmoNativeX11Host::translateEvent(const XEvent &event, QCosmoNativeEventSink *sink)
++void QCosmoNativeX11Host::translateEvent(const uchar *event, QCosmoNativeEventSink *sink)
 +{
-+    switch (event.type) {
++    const quint8 type = event[0] & 0x7f;
++    const quint8 detail = event[1];
++    switch (type) {
 +    case 2: // KeyPress
-+        translateKey(event.xkey, QEvent::KeyPress, sink);
++        translateKey(detail, x11Le16(event + 28), QEvent::KeyPress, sink);
 +        break;
 +    case 3: // KeyRelease
-+        translateKey(event.xkey, QEvent::KeyRelease, sink);
++        translateKey(detail, x11Le16(event + 28), QEvent::KeyRelease, sink);
 +        break;
 +    case 4: // ButtonPress
-+        translateButton(event.xbutton, true, sink);
++        translateButton(detail, x11LeS16(event + 24), x11LeS16(event + 26), true, sink);
 +        break;
 +    case 5: // ButtonRelease
-+        translateButton(event.xbutton, false, sink);
++        translateButton(detail, x11LeS16(event + 24), x11LeS16(event + 26), false, sink);
 +        break;
 +    case 6: // MotionNotify
 +        if (sink)
-+            sink->handleHostMouse(QPointF(event.xmotion.x, event.xmotion.y), m_buttons,
-+                                  Qt::NoButton, QEvent::MouseMove);
-+        break;
-+    case 12: // Expose
-+        if (m_display)
-+            XFlush(m_display);
++            sink->handleHostMouse(QPointF(x11LeS16(event + 24), x11LeS16(event + 26)),
++                                  m_buttons, Qt::NoButton, QEvent::MouseMove);
 +        break;
 +    case 17: // DestroyNotify
 +        if (sink)
 +            sink->handleHostClose();
 +        break;
-+    case 22: // ConfigureNotify
-+        if (sink && event.xconfigure.width > 0 && event.xconfigure.height > 0) {
-+            const QSize size(event.xconfigure.width, event.xconfigure.height);
-+            if (size != m_size) {
-+                m_size = size;
-+                sink->handleHostResize(size);
-+            }
++    case 22: { // ConfigureNotify
++        const QSize size(x11Le16(event + 20), x11Le16(event + 22));
++        if (sink && size.isValid() && size != m_size) {
++            m_size = size;
++            sink->handleHostResize(size);
 +        }
 +        break;
++    }
 +    default:
 +        break;
 +    }
@@ -4169,14 +4498,33 @@ index 00000000000..1c2bc138062
 +
 +void QCosmoNativeX11Host::pumpEvents(QCosmoNativeEventSink *sink)
 +{
-+    if (!m_display)
++    if (m_fd < 0)
 +        return;
 +
-+    while (XPending(m_display) > 0) {
-+        XEvent event;
-+        memset(&event, 0, sizeof(event));
-+        XNextEvent(m_display, &event);
-+        translateEvent(event, sink);
++    char buffer[4096];
++    for (;;) {
++        const ssize_t got = ::read(m_fd, buffer, sizeof(buffer));
++        if (got < 0) {
++            if (errno == EINTR)
++                continue;
++            if (errno == EAGAIN || errno == EWOULDBLOCK)
++                break;
++            m_error = QString::fromLatin1("X11 event read failed: %1").arg(strerror(errno));
++            if (sink)
++                sink->handleHostClose();
++            return;
++        }
++        if (got == 0) {
++            if (sink)
++                sink->handleHostClose();
++            return;
++        }
++        m_eventBuffer.append(buffer, got);
++    }
++
++    while (m_eventBuffer.size() >= 32) {
++        translateEvent(reinterpret_cast<const uchar *>(m_eventBuffer.constData()), sink);
++        m_eventBuffer.remove(0, 32);
 +    }
 +}
 +
@@ -4634,37 +4982,3 @@ index 00000000000..8d28b14ebbe
 +QT_END_NAMESPACE
 +
 +#endif // QCOSMONATIVESCREEN_H
-diff --git a/src/plugins/platforms/vnc/qvncclient.cpp b/src/plugins/platforms/vnc/qvncclient.cpp
-index b3aafd01948..47cbcad0399 100644
---- a/src/plugins/platforms/vnc/qvncclient.cpp
-+++ b/src/plugins/platforms/vnc/qvncclient.cpp
-@@ -214,11 +214,29 @@ void QVncClient::readClient()
-                     quint32 auth = htonl(1);
-                     m_clientSocket->write((char *) &auth, sizeof(auth));
-                     m_state = Init;
-+                } else {
-+                    // RFB 3.7/3.8 clients expect a security type list before
-+                    // sending ClientInit. Offer only "None", matching the
-+                    // historical RFB 3.3 behavior above.
-+                    const char securityTypes[] = { 1, 1 };
-+                    m_clientSocket->write(securityTypes, sizeof(securityTypes));
-+                    m_state = Authentication;
-                 }
-             }
-             break;
-         case Authentication:
-+            if (m_clientSocket->bytesAvailable() >= 1) {
-+                quint8 securityType = 0;
-+                m_clientSocket->read(reinterpret_cast<char *>(&securityType), 1);
-+                if (securityType != 1) {
-+                    discardClient();
-+                    return;
-+                }
- 
-+                quint32 result = htonl(0);
-+                m_clientSocket->write(reinterpret_cast<char *>(&result), sizeof(result));
-+                m_state = Init;
-+            }
-             break;
-         case Init:
-             if (m_clientSocket->bytesAvailable() >= 1) {

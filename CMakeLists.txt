@@ -253,10 +253,6 @@ if(COSMOPOLITAN)
         message(FATAL_ERROR "Set QT_COSMO_PREFIX to the Qt Cosmopolitan install prefix.")
     endif()
 
-    find_package(Qt6QVncIntegrationPlugin CONFIG REQUIRED
-        PATHS "${QT_COSMO_PREFIX}/lib/cmake/Qt6Gui"
-        NO_DEFAULT_PATH
-    )
     find_package(Qt6QCosmoNativeIntegrationPlugin CONFIG REQUIRED
         PATHS "${QT_COSMO_PREFIX}/lib/cmake/Qt6Gui"
         NO_DEFAULT_PATH
@@ -322,9 +318,10 @@ if(COSMOPOLITAN)
     target_link_options(Fiamy PRIVATE LINKER:--allow-multiple-definition)
 
     qt_import_plugins(Fiamy
+        EXCLUDE_BY_TYPE
+            platforms
         INCLUDE
             Qt6::QCosmoNativeIntegrationPlugin
-            Qt6::QVncIntegrationPlugin
             Qt6::QFFmpegMediaPlugin
     )
 endif()
