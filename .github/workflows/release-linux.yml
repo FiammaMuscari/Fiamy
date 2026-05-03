@@ -7,7 +7,9 @@ on:
 
 jobs:
   linux-assets:
-    runs-on: ubuntu-latest
+    # Build Linux release assets on an older stable distro so bundled runtime
+    # libraries do not pick up GLIBC symbols from rolling/new Ubuntu hosts.
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout
@@ -17,6 +19,7 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.9.2'
+          modules: 'qtmultimedia'
           cache: true
 
       - name: Install Linux build dependencies
@@ -53,6 +56,9 @@ jobs:
 
       - name: Smoke test AppImage
         run: ./packaging/linux/smoke-test-linux-bundle.sh dist/linux-appimage/Fiamy-*-x86_64.AppImage
+
+      - name: Audit AppImage portability
+        run: ./packaging/linux/audit-appimage.sh dist/linux-appimage/Fiamy-*-x86_64.AppImage 2.35
 
       - name: Upload AppImage to workflow artifacts
         uses: actions/upload-artifact@v4

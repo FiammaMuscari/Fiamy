@@ -63,6 +63,30 @@ copy_file_if_needed() {
   fi
 }
 
+prune_forbidden_runtime_libraries() {
+  local base
+  local removed=0
+
+  while IFS= read -r -d '' bundled_lib; do
+    base="${bundled_lib##*/}"
+    case "${base}" in
+      ld-linux*.so*|libBrokenLocale.so*|libSegFault.so*|\
+      libc.so*|libpthread.so*|libdl.so*|librt.so*|libm.so*|libmvec.so*|\
+      libutil.so*|libanl.so*|libresolv.so*|libnss_*.so*|libcrypt.so*|libthread_db.so*)
+        rm -f "${bundled_lib}"
+        echo "Removed forbidden glibc/loader component from bundle: ${base}" >&2
+        removed=$((removed + 1))
+        ;;
+    esac
+  done < <(
+    find "${PORTABLE_DIR}/lib" \( -type f -o -type l \) -print0 2>/dev/null || true
+  )
+
+  if [[ "${removed}" -gt 0 ]]; then
+    echo "Pruned ${removed} forbidden glibc/loader component(s)." >&2
+  fi
+}
+
 mapfile -t QT_RUNTIME_LIBS < <(
   ldd "${PORTABLE_DIR}/bin/fiamy" \
     | awk '/=>/ {print $3}' \
@@ -87,7 +111,9 @@ for qml_module in QtQml QtQuick QtMultimedia Qt/labs/platform; do
     "${PORTABLE_DIR}/lib/x86_64-linux-gnu/qt6/qml/${qml_module}"
 done
 
+prune_forbidden_runtime_libraries
 "${ROOT_DIR}/packaging/linux/deploy-runtime-libs.sh" "${PORTABLE_DIR}"
+prune_forbidden_runtime_libraries
 "${ROOT_DIR}/packaging/linux/verify-linux-bundle.sh" "${PORTABLE_DIR}"
 
 cat > "${PORTABLE_DIR}/Fiamy.sh" <<'EOF'

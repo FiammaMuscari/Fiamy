@@ -31,7 +31,7 @@ should_exclude_library() {
     ld-linux*.so*|linux-vdso.so*|libBrokenLocale.so*|libSegFault.so*)
       return 0
       ;;
-    libc.so*|libpthread.so*|libdl.so*|librt.so*|libm.so*|libutil.so*|libanl.so*|libresolv.so*|libnss_*.so*|libcrypt.so*)
+    libc.so*|libpthread.so*|libdl.so*|librt.so*|libm.so*|libmvec.so*|libutil.so*|libanl.so*|libresolv.so*|libnss_*.so*|libcrypt.so*|libthread_db.so*)
       return 0
       ;;
     libGL.so*|libEGL.so*|libGLX.so*|libOpenGL.so*|libGLdispatch.so*|libvulkan.so*|libdrm.so*|libgbm.so*|libva.so*|libva-drm.so*|libva-x11.so*|libvdpau.so*|libOpenCL.so*|libcuda.so*|libnvidia-*.so*)
@@ -110,5 +110,28 @@ for ((i = 0; i < ${#queue[@]}; i++)); do
     fi
   done < <(resolved_dependencies "${elf}")
 done
+
+if command -v patchelf >/dev/null 2>&1; then
+  while IFS= read -r -d '' elf; do
+    if ! is_elf "${elf}"; then
+      continue
+    fi
+
+    elf_dir="$(dirname "${elf}")"
+    lib_rel_from_elf="$(realpath --relative-to="${elf_dir}" "${LIB_DIR}")"
+    if [[ "${lib_rel_from_elf}" == "." ]]; then
+      rpath='$ORIGIN'
+    else
+      rpath="\$ORIGIN/${lib_rel_from_elf}:\$ORIGIN"
+    fi
+
+    patchelf --set-rpath "${rpath}" "${elf}" 2>/dev/null || \
+      echo "Warning: could not set RUNPATH on ${elf}" >&2
+  done < <(
+    find "${BUNDLE_ROOT}/bin" "${LIB_DIR}" -type f -print0 2>/dev/null || true
+  )
+else
+  echo "Warning: patchelf not found; ELF RUNPATHs were not normalized." >&2
+fi
 
 echo "Runtime deployment completed for ${BUNDLE_ROOT}"

@@ -28,13 +28,28 @@ is_allowed_host_library() {
     ld-linux*.so*|linux-vdso.so*|libBrokenLocale.so*|libSegFault.so*)
       return 0
       ;;
-    libc.so*|libpthread.so*|libdl.so*|librt.so*|libm.so*|libutil.so*|libanl.so*|libresolv.so*|libnss_*.so*|libcrypt.so*)
+    libc.so*|libpthread.so*|libdl.so*|librt.so*|libm.so*|libmvec.so*|libutil.so*|libanl.so*|libresolv.so*|libnss_*.so*|libcrypt.so*|libthread_db.so*)
       return 0
       ;;
     libGL.so*|libEGL.so*|libGLX.so*|libOpenGL.so*|libGLdispatch.so*|libvulkan.so*|libdrm.so*|libgbm.so*|libva.so*|libva-drm.so*|libva-x11.so*|libvdpau.so*|libOpenCL.so*|libcuda.so*|libnvidia-*.so*)
       return 0
       ;;
     libsystemd.so*|libudev.so*|libdbus-1.so*|libselinux.so*|libapparmor.so*|libcap.so*|libmount.so*|libblkid.so*)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+is_forbidden_bundled_library() {
+  local base="${1##*/}"
+
+  case "${base}" in
+    ld-linux*.so*|libBrokenLocale.so*|libSegFault.so*)
+      return 0
+      ;;
+    libc.so*|libpthread.so*|libdl.so*|librt.so*|libm.so*|libmvec.so*|libutil.so*|libanl.so*|libresolv.so*|libnss_*.so*|libcrypt.so*|libthread_db.so*)
       return 0
       ;;
   esac
@@ -56,6 +71,15 @@ is_must_bundle_library() {
 
 failures=0
 checked=0
+
+while IFS= read -r -d '' bundled_file; do
+  if is_forbidden_bundled_library "${bundled_file}"; then
+    echo "Forbidden glibc/loader component bundled: $(realpath --relative-to="${BUNDLE_ROOT}" "${bundled_file}")" >&2
+    failures=$((failures + 1))
+  fi
+done < <(
+  find "${BUNDLE_ROOT}" \( -type f -o -type l \) -print0 2>/dev/null || true
+)
 
 while IFS= read -r -d '' elf; do
   is_elf "${elf}" || continue
