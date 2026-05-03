@@ -34,7 +34,7 @@ is_allowed_host_library() {
     libGL.so*|libEGL.so*|libGLX.so*|libOpenGL.so*|libGLdispatch.so*|libvulkan.so*|libdrm.so*|libgbm.so*|libva.so*|libva-drm.so*|libva-x11.so*|libvdpau.so*|libOpenCL.so*|libcuda.so*|libnvidia-*.so*)
       return 0
       ;;
-    libsystemd.so*|libudev.so*|libdbus-1.so*|libapparmor.so*|libcap.so*|libmount.so*|libblkid.so*)
+    libsystemd.so*|libudev.so*)
       return 0
       ;;
   esac
@@ -61,7 +61,8 @@ is_must_bundle_library() {
   local base="${1##*/}"
 
   case "${base}" in
-    libQt6*.so*|libicu*.so*|libav*.so*|libswresample.so*|libswscale.so*|libpostproc.so*)
+    libQt6*.so*|libicu*.so*|libav*.so*|libswresample.so*|libswscale.so*|libpostproc.so*|\
+    libapparmor.so*|libdbus-1.so*|libcap.so*|libmount.so*|libblkid.so*|libselinux.so*)
       return 0
       ;;
   esac
@@ -92,6 +93,12 @@ while IFS= read -r -d '' elf; do
       continue
     fi
 
+    if [[ "${line}" == *"version \`"*' not found'* ]] || [[ "${line}" == *"cannot open shared object file"* ]]; then
+      echo "Dependency resolution error in $(realpath --relative-to="${BUNDLE_ROOT}" "${elf}"): ${line}" >&2
+      failures=$((failures + 1))
+      continue
+    fi
+
     dep=""
     if [[ "${line}" =~ =\>\ (/[^[:space:]]+) ]]; then
       dep="${BASH_REMATCH[1]}"
@@ -110,7 +117,7 @@ while IFS= read -r -d '' elf; do
       # and unresolved libraries.
       echo "Warning: host dependency remains: ${dep##*/} for ${elf#"${BUNDLE_ROOT}/"}" >&2
     fi
-  done < <(LD_LIBRARY_PATH="${LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" ldd "${elf}" 2>/dev/null || true)
+  done < <(LD_LIBRARY_PATH="${LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" ldd "${elf}" 2>&1 || true)
 done < <(
   find "${BUNDLE_ROOT}/bin" "${LIB_DIR}" -type f -print0 2>/dev/null || true
 )

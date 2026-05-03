@@ -53,17 +53,27 @@ missing_log="$(mktemp "${TMPDIR:-/tmp}/fiamy-missing.XXXXXX.log")"
 glibc_log="$(mktemp "${TMPDIR:-/tmp}/fiamy-glibc.XXXXXX.log")"
 trap 'rm -f "${missing_log}" "${glibc_log}"; cleanup' EXIT
 
+check_ldd_output() {
+  local elf="$1"
+  local output
+  output="$(
+    LD_LIBRARY_PATH="${APPDIR}/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
+      ldd "${elf}" 2>&1 || true
+  )"
+
+  if grep -Eq '=>[[:space:]]+not found|version `[^`]+` not found|cannot open shared object file' <<<"${output}"; then
+    {
+      echo
+      echo "Dependency errors for: ${elf#${APPDIR}/}"
+      echo "${output}"
+    } >> "${missing_log}"
+  fi
+}
+
 while IFS= read -r -d '' file; do
   if is_elf "${file}"; then
     checked=$((checked + 1))
-    missing="$(ldd "${file}" 2>/dev/null | grep "not found" || true)"
-    if [[ -n "${missing}" ]]; then
-      {
-        echo
-        echo "Missing for: ${file#${APPDIR}/}"
-        echo "${missing}"
-      } >> "${missing_log}"
-    fi
+    check_ldd_output "${file}"
   fi
 done < <(
   find "${APPDIR}" -type f \( -perm -111 -o -name "*.so*" \) -print0

@@ -23,13 +23,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: '6.9.2'
-          modules: 'qtmultimedia'
-          cache: true
-
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update
@@ -40,7 +33,13 @@ jobs:
             pkg-config \
             patchelf \
             wget \
-            yt-dlp
+            yt-dlp \
+            qt6-base-dev \
+            qt6-base-dev-tools \
+            qt6-declarative-dev \
+            qt6-declarative-dev-tools \
+            qt6-multimedia-dev \
+            qt6-wayland
 
       - name: Build portable Linux bundle
         run: ./packaging/linux/package-portable.sh

@@ -37,7 +37,7 @@ should_exclude_library() {
     libGL.so*|libEGL.so*|libGLX.so*|libOpenGL.so*|libGLdispatch.so*|libvulkan.so*|libdrm.so*|libgbm.so*|libva.so*|libva-drm.so*|libva-x11.so*|libvdpau.so*|libOpenCL.so*|libcuda.so*|libnvidia-*.so*)
       return 0
       ;;
-    libsystemd.so*|libudev.so*|libdbus-1.so*|libapparmor.so*|libcap.so*|libmount.so*|libblkid.so*)
+    libsystemd.so*|libudev.so*)
       return 0
       ;;
   esac
@@ -49,6 +49,7 @@ resolved_dependencies() {
   local elf="$1"
   LD_LIBRARY_PATH="${LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" ldd "${elf}" 2>/dev/null \
     | awk '
+      /version `[^'"'"']+'"'"' not found/ { next }
       /=>[[:space:]]+not found/ { next }
       match($0, /=>[[:space:]]+(\/[^[:space:]]+)/) {
         dep = substr($0, RSTART + 3, RLENGTH - 3)
