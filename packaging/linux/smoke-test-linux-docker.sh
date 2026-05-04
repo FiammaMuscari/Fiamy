@@ -37,10 +37,14 @@ run_check() {
 
 run_check "AppImage" '
   apt update >/dev/null &&
+  cd /app &&
   appimage=$(echo /app/linux-appimage/Fiamy-*.AppImage) &&
   [ "${appimage}" != "/app/linux-appimage/Fiamy-*.AppImage" ] &&
   chmod +x "${appimage}" &&
-  QT_QPA_PLATFORM=offscreen "${appimage}" --appimage-extract-and-run
+  rm -rf /app/squashfs-root &&
+  "${appimage}" --appimage-extract >/dev/null &&
+  test -f /app/squashfs-root/usr/lib/x86_64-linux-gnu/qt6/qml/Fiamy/qmldir &&
+  QT_QPA_PLATFORM=offscreen QML_IMPORT_TRACE=1 /app/squashfs-root/AppRun
 '
 
 run_check "portable" '
