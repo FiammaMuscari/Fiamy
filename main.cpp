@@ -37,7 +37,7 @@ int main(int argc, char *argv[])
     qmlRegisterType<YoutubeDownloader>("Fiamy", 1, 0, "YoutubeDownloader");
 
     QQmlApplicationEngine engine;
-    engine.setOutputWarningsToStandardError(false);
+    engine.setOutputWarningsToStandardError(true);
 
 #ifdef QT_QML_DEBUG
     // 🔥 HOT RELOAD COMPLETO CON RECARGA AUTOMÁTICA
