@@ -587,6 +587,10 @@ build_app() {
         -DCOSMOCC_ROOT="$COSMOCC_ROOT" \
         -DQT_COSMO_PREFIX="$QT_PREFIX" \
         -DCMAKE_PREFIX_PATH="$prefix_path" \
+        -DOPENSSL_ROOT_DIR="$OPENSSL_PREFIX" \
+        -DOPENSSL_CRYPTO_LIBRARY="$OPENSSL_PREFIX/lib/libcrypto.a" \
+        -DOPENSSL_SSL_LIBRARY="$OPENSSL_PREFIX/lib/libssl.a" \
+        -DOPENSSL_INCLUDE_DIR="$OPENSSL_PREFIX/include" \
         -DFIAMY_QT_HOST_PREFIX="$HOST_QT_PREFIX" \
         -DFIAMY_EMBED_YT_DLP=OFF
 

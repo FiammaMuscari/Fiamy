@@ -422,6 +422,17 @@ if(COSMOPOLITAN)
     if(NOT QT_COSMO_PREFIX)
         message(FATAL_ERROR "Set QT_COSMO_PREFIX to the Qt Cosmopolitan install prefix.")
     endif()
+    set(FFMPEG_DIR "" CACHE PATH "Static FFmpeg prefix used by the Cosmopolitan build")
+    if(FFMPEG_DIR)
+        target_include_directories(Fiamy PRIVATE "${FFMPEG_DIR}/include")
+        target_link_libraries(Fiamy PRIVATE
+            "${FFMPEG_DIR}/lib/libavformat.a"
+            "${FFMPEG_DIR}/lib/libavcodec.a"
+            "${FFMPEG_DIR}/lib/libswresample.a"
+            "${FFMPEG_DIR}/lib/libswscale.a"
+            "${FFMPEG_DIR}/lib/libavutil.a"
+        )
+    endif()
 
     find_package(Qt6QCosmoNativeIntegrationPlugin CONFIG REQUIRED
         PATHS "${QT_COSMO_PREFIX}/lib/cmake/Qt6Gui"
@@ -493,6 +504,7 @@ if(COSMOPOLITAN)
         INCLUDE
             Qt6::QCosmoNativeIntegrationPlugin
             Qt6::QFFmpegMediaPlugin
+            Qt6::QTlsBackendOpenSSLPlugin
     )
 endif()
 

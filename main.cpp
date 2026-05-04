@@ -11,12 +11,16 @@
 #include <QFont>
 #include <QFontDatabase>
 #include <QQuickWindow>
+#include <QtPlugin>
 #include "audiocaptureanalyzer.h"
 #include "youtubedownloader.h"
 
 #ifdef __COSMOPOLITAN__
 #include <QApplication>
 using FiamyApplication = QApplication;
+Q_IMPORT_PLUGIN(QCosmoNativeIntegrationPlugin)
+Q_IMPORT_PLUGIN(QFFmpegMediaPlugin)
+Q_IMPORT_PLUGIN(QTlsBackendOpenSSL)
 extern "C" {
 #include <libc/dce.h>
 }
