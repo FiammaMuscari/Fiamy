@@ -110,7 +110,7 @@ while IFS= read -r -d '' elf; do
 
     [[ -n "${dep}" ]] || continue
 
-    if is_must_bundle_library "${dep}" && [[ "${dep}" != "${LIB_DIR}/"* ]]; then
+    if is_must_bundle_library "${dep}" && [[ "${dep}" != "${BUNDLE_ROOT}/"* ]]; then
       echo "Dependency should be bundled but resolves to host: $(basename "${dep}") for $(realpath --relative-to="${BUNDLE_ROOT}" "${elf}")" >&2
       failures=$((failures + 1))
     elif ! is_allowed_host_library "${dep}" && [[ "${dep}" != "${BUNDLE_ROOT}/"* ]]; then
