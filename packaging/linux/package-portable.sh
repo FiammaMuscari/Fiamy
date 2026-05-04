@@ -63,11 +63,30 @@ copy_file_if_needed() {
   fi
 }
 
+write_fontconfig_config() {
+  local config_path="$1"
+  local bundled_fonts_rel="$2"
+
+  mkdir -p "$(dirname "${config_path}")"
+  cat > "${config_path}" <<EOF
+<?xml version="1.0"?>
+<fontconfig>
+  <description>Fiamy bundled fontconfig runtime</description>
+  <dir prefix="relative">${bundled_fonts_rel}</dir>
+  <cachedir prefix="xdg">fontconfig</cachedir>
+  <cachedir>~/.fontconfig</cachedir>
+  <config>
+    <rescan>
+      <int>30</int>
+    </rescan>
+  </config>
+</fontconfig>
+EOF
+}
+
 copy_fontconfig_runtime() {
-  copy_tree "/etc/fonts" "${PORTABLE_DIR}/etc/fonts"
-  copy_tree "/usr/share/fontconfig" "${PORTABLE_DIR}/usr/share/fontconfig"
-  copy_file_if_needed "/usr/share/xml/fontconfig/fonts.dtd" "${PORTABLE_DIR}/etc/fonts"
-  copy_file_if_needed "/etc/fonts/fonts.dtd" "${PORTABLE_DIR}/etc/fonts"
+  mkdir -p "${PORTABLE_DIR}/etc/fonts" "${PORTABLE_DIR}/usr/share/fonts"
+  write_fontconfig_config "${PORTABLE_DIR}/etc/fonts/fonts.conf" "../../usr/share/fonts"
 
   for font_dir in \
     /usr/share/fonts/truetype/dejavu \
@@ -143,10 +162,9 @@ export QT_PLUGIN_PATH="${APPDIR}/lib/x86_64-linux-gnu/qt6/plugins${QT_PLUGIN_PAT
 export QML2_IMPORT_PATH="${APPDIR}/lib/x86_64-linux-gnu/qt6/qml${QML2_IMPORT_PATH:+:${QML2_IMPORT_PATH}}"
 export QT_QPA_PLATFORM_PLUGIN_PATH="${APPDIR}/lib/x86_64-linux-gnu/qt6/plugins/platforms"
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland;xcb}"
-export FONTCONFIG_PATH="/etc/fonts"
-export FONTCONFIG_FILE="/etc/fonts/fonts.conf"
-export FONTCONFIG_SYSROOT="${APPDIR}"
-export XDG_DATA_DIRS="${APPDIR}/usr/share${XDG_DATA_DIRS:+:${XDG_DATA_DIRS}}"
+export FONTCONFIG_PATH="${APPDIR}/etc/fonts"
+export FONTCONFIG_FILE="${APPDIR}/etc/fonts/fonts.conf"
+export XDG_DATA_DIRS="${APPDIR}/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 export QT_QUICK_BACKEND="${QT_QUICK_BACKEND:-software}"
 
 exec "${APPDIR}/bin/fiamy" "$@"

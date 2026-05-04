@@ -30,7 +30,7 @@ QT_QPA_PLATFORM=offscreen timeout "${TIMEOUT_SECONDS}s" "${RUNNER}" >"${LOG_FILE
 status=$?
 set -e
 
-if grep -Eiq 'error while loading shared libraries|cannot open shared object file|Could not (find|load) the Qt platform plugin|No such file or directory|Fontconfig error: Cannot load default config file|QQmlApplicationEngine failed to load component' "${LOG_FILE}"; then
+if grep -Eiq 'error while loading shared libraries|cannot open shared object file|Could not (find|load) the Qt platform plugin|No such file or directory|Fontconfig error: Cannot load default config file|QQmlApplicationEngine failed to load component|GLIBC_[0-9]+\.[0-9]+|MOUNT_[0-9_]+' "${LOG_FILE}"; then
   cat "${LOG_FILE}" >&2
   echo "Smoke test failed: startup dependency/plugin error detected." >&2
   exit 1

@@ -74,6 +74,9 @@ jobs:
       - name: Smoke test AppImage
         run: ./packaging/linux/smoke-test-linux-bundle.sh dist/linux-appimage/Fiamy-*-x86_64.AppImage
 
+      - name: Smoke test Linux artifacts in clean Docker
+        run: ./packaging/linux/smoke-test-linux-docker.sh dist
+
       - name: Audit AppImage portability
         run: ./packaging/linux/audit-appimage.sh dist/linux-appimage/Fiamy-*-x86_64.AppImage 2.35
 

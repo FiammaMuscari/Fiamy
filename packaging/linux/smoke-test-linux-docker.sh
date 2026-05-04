@@ -8,7 +8,7 @@ fi
 
 ARTIFACTS_DIR="$(cd "$1" && pwd)"
 IMAGE="${FIAMY_DOCKER_IMAGE:-ubuntu:22.04}"
-FAIL_PATTERN='Fontconfig error: Cannot load default config file|QQmlApplicationEngine failed to load component|error while loading shared libraries|cannot open shared object file'
+FAIL_PATTERN='Fontconfig error: Cannot load default config file|QQmlApplicationEngine failed to load component|error while loading shared libraries|cannot open shared object file|GLIBC_[0-9]+\.[0-9]+|MOUNT_[0-9_]+'
 
 run_check() {
   local name="$1"

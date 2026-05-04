@@ -20,6 +20,21 @@ fi
 rm -rf "${APPDIR}"
 mkdir -p "${APPDIR}/usr"
 cp -a "${PORTABLE_DIR}/." "${APPDIR}/usr/"
+mkdir -p "${APPDIR}/usr/etc/fonts"
+cat > "${APPDIR}/usr/etc/fonts/fonts.conf" <<'EOF'
+<?xml version="1.0"?>
+<fontconfig>
+  <description>Fiamy bundled fontconfig runtime</description>
+  <dir prefix="relative">../../share/fonts</dir>
+  <cachedir prefix="xdg">fontconfig</cachedir>
+  <cachedir>~/.fontconfig</cachedir>
+  <config>
+    <rescan>
+      <int>30</int>
+    </rescan>
+  </config>
+</fontconfig>
+EOF
 
 cat > "${APPDIR}/AppRun" <<'EOF'
 #!/usr/bin/env bash
@@ -31,10 +46,9 @@ export QT_PLUGIN_PATH="${APPDIR}/usr/lib/x86_64-linux-gnu/qt6/plugins${QT_PLUGIN
 export QML2_IMPORT_PATH="${APPDIR}/usr/lib/x86_64-linux-gnu/qt6/qml${QML2_IMPORT_PATH:+:${QML2_IMPORT_PATH}}"
 export QT_QPA_PLATFORM_PLUGIN_PATH="${APPDIR}/usr/lib/x86_64-linux-gnu/qt6/plugins/platforms"
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland;xcb}"
-export FONTCONFIG_PATH="/etc/fonts"
-export FONTCONFIG_FILE="/etc/fonts/fonts.conf"
-export FONTCONFIG_SYSROOT="${APPDIR}/usr"
-export XDG_DATA_DIRS="${APPDIR}/usr/share${XDG_DATA_DIRS:+:${XDG_DATA_DIRS}}"
+export FONTCONFIG_PATH="${APPDIR}/usr/etc/fonts"
+export FONTCONFIG_FILE="${APPDIR}/usr/etc/fonts/fonts.conf"
+export XDG_DATA_DIRS="${APPDIR}/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 export QT_QUICK_BACKEND="${QT_QUICK_BACKEND:-software}"
 
 exec "${APPDIR}/usr/bin/fiamy" "$@"
