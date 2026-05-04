@@ -8,6 +8,7 @@ ARCHIVE_DIR="${ROOT_DIR}/dist/linux-portable"
 VERSION="${1:-$(grep -oP 'project\(Fiamy VERSION \K[^ ]+' "${ROOT_DIR}/CMakeLists.txt" | head -1)}"
 ARCHIVE_BASENAME="fiamy-${VERSION}-linux-portable-x86_64"
 YTDLP_BUNDLE="${ROOT_DIR}/dist/tools/yt-dlp_linux"
+FIAMY_QML_MODULE_DIR="${BUILD_DIR}/Fiamy"
 
 prepare_bundled_ytdlp() {
   if [[ -x "${YTDLP_BUNDLE}" ]]; then
@@ -145,6 +146,9 @@ for qml_module in QtQml QtQuick QtMultimedia Qt/labs/platform; do
   copy_tree "${QT_QML_DIR}/${qml_module}" \
     "${PORTABLE_DIR}/lib/x86_64-linux-gnu/qt6/qml/${qml_module}"
 done
+
+copy_tree "${FIAMY_QML_MODULE_DIR}" \
+  "${PORTABLE_DIR}/lib/x86_64-linux-gnu/qt6/qml/Fiamy"
 
 copy_fontconfig_runtime
 prune_forbidden_runtime_libraries
