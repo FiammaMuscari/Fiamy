@@ -142,7 +142,7 @@ for plugin_subdir in platforms platforminputcontexts xcbglintegrations \
     "${PORTABLE_DIR}/lib/x86_64-linux-gnu/qt6/plugins/${plugin_subdir}"
 done
 
-for qml_module in QtQml QtQuick QtMultimedia Qt/labs/platform; do
+for qml_module in QtCore QtQml QtQuick QtMultimedia Qt/labs/platform; do
   copy_tree "${QT_QML_DIR}/${qml_module}" \
     "${PORTABLE_DIR}/lib/x86_64-linux-gnu/qt6/qml/${qml_module}"
 done
