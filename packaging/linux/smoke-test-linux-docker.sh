@@ -19,7 +19,7 @@ run_check() {
   local output
   local status=0
   set +e
-  output="$(timeout "${TIMEOUT_SECONDS}s" docker run --rm -v "${ARTIFACTS_DIR}:/app" "${IMAGE}" bash -lc "${cmd}" 2>&1)"
+  output="$(docker run --rm -v "${ARTIFACTS_DIR}:/app" "${IMAGE}" bash -lc "${cmd}" 2>&1)"
   status=$?
   set -e
   printf '%s\n' "${output}"
@@ -44,7 +44,7 @@ run_check "AppImage" '
   rm -rf /app/squashfs-root &&
   "${appimage}" --appimage-extract >/dev/null &&
   test -f /app/squashfs-root/usr/lib/x86_64-linux-gnu/qt6/qml/Fiamy/qmldir &&
-  QT_QPA_PLATFORM=offscreen QML_IMPORT_TRACE=1 /app/squashfs-root/AppRun
+  timeout "${TIMEOUT_SECONDS}s" env QT_QPA_PLATFORM=offscreen QML_IMPORT_TRACE=1 /app/squashfs-root/AppRun
 '
 
 run_check "portable" '
@@ -53,7 +53,7 @@ run_check "portable" '
   archive=$(echo /app/linux-portable/fiamy-*-linux-portable-x86_64.tar.gz) &&
   [ "${archive}" != "/app/linux-portable/fiamy-*-linux-portable-x86_64.tar.gz" ] &&
   tar -xzf "${archive}" >/dev/null 2>&1 &&
-  QT_QPA_PLATFORM=offscreen ./fiamy-linux-portable/Fiamy.sh
+  timeout "${TIMEOUT_SECONDS}s" env QT_QPA_PLATFORM=offscreen ./fiamy-linux-portable/Fiamy.sh
 '
 
 run_check ".deb" '
@@ -61,7 +61,7 @@ run_check ".deb" '
   deb=$(echo /app/linux-deb/fiamy_*_ubuntu-debian-bundled_amd64.deb) &&
   [ "${deb}" != "/app/linux-deb/fiamy_*_ubuntu-debian-bundled_amd64.deb" ] &&
   apt install -y "${deb}" >/dev/null &&
-  QT_QPA_PLATFORM=offscreen fiamy
+  timeout "${TIMEOUT_SECONDS}s" env QT_QPA_PLATFORM=offscreen fiamy
 '
 
 echo "Docker smoke tests passed."
