@@ -66,6 +66,8 @@ copy_file_if_needed() {
 copy_fontconfig_runtime() {
   copy_tree "/etc/fonts" "${PORTABLE_DIR}/etc/fonts"
   copy_tree "/usr/share/fontconfig" "${PORTABLE_DIR}/usr/share/fontconfig"
+  copy_file_if_needed "/usr/share/xml/fontconfig/fonts.dtd" "${PORTABLE_DIR}/etc/fonts"
+  copy_file_if_needed "/etc/fonts/fonts.dtd" "${PORTABLE_DIR}/etc/fonts"
 
   for font_dir in \
     /usr/share/fonts/truetype/dejavu \
