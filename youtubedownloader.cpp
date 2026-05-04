@@ -280,12 +280,16 @@ static QString getYtDlpPath()
         return embeddedPath;
     }
 
+    const QString downloadedPath = downloadedYtDlpPath();
+#ifdef __COSMOPOLITAN__
+    return downloadedPath;
+#endif
+
     const QString systemPath = QStandardPaths::findExecutable("yt-dlp");
     if (!systemPath.isEmpty()) {
         return systemPath;
     }
 
-    const QString downloadedPath = downloadedYtDlpPath();
     if (QFileInfo::exists(downloadedPath)) {
         return downloadedPath;
     }
@@ -466,6 +470,7 @@ YoutubeDownloader::YoutubeDownloader(QObject *parent)
     , m_currentCacheSize(0)
     , m_maxFileSize(100 * 1024 * 1024)
     , m_maxSongsPerPlaylist(10)
+    , m_ytdlpDownloadInProgress(false)
     , m_downloadedCount(0)
     , m_totalToDownload(0)
 {
@@ -476,21 +481,18 @@ YoutubeDownloader::YoutubeDownloader(QObject *parent)
     connect(m_process, &QProcess::readyReadStandardError,
             this, &YoutubeDownloader::onReadyReadStandardError);
 
-    // Verificar/descargar yt-dlp al iniciar
     if (!QFile::exists(m_ytdlpPath)) {
         QString embeddedPath;
         if (extractEmbeddedYtDlp(&embeddedPath)) {
             m_ytdlpPath = embeddedPath;
             qDebug() << "✅ yt-dlp embebido listo:" << m_ytdlpPath;
         } else {
-            qDebug() << "⬇️ yt-dlp no encontrado, descargando...";
-            downloadYtDlp();
+            qDebug() << "⬇️ yt-dlp no encontrado; se descargará en el primer uso";
         }
     } else if (isEmbeddedYtDlpPath(m_ytdlpPath)) {
         qDebug() << "✅ yt-dlp embebido listo:" << m_ytdlpPath;
     } else if (isDownloadedYtDlpPath(m_ytdlpPath)) {
         qDebug() << "✅ yt-dlp app-managed encontrado";
-        checkYtDlpVersion();
     } else {
         qDebug() << "✅ yt-dlp del sistema o empaquetado encontrado:" << m_ytdlpPath;
     }
@@ -526,11 +528,20 @@ YoutubeDownloader::~YoutubeDownloader()
 
 void YoutubeDownloader::downloadYtDlp()
 {
+    if (m_ytdlpDownloadInProgress) {
+        return;
+    }
+
     QString embeddedPath;
     if (extractEmbeddedYtDlp(&embeddedPath)) {
         m_ytdlpPath = embeddedPath;
         qDebug() << "✅ yt-dlp embebido listo";
         emit ytdlpDownloading("✅ yt-dlp listo");
+        if (!m_pendingYtDlpUrl.isEmpty()) {
+            const QString pendingUrl = m_pendingYtDlpUrl;
+            m_pendingYtDlpUrl.clear();
+            QTimer::singleShot(0, this, [this, pendingUrl]() { getAudioUrl(pendingUrl); });
+        }
         return;
     }
 
@@ -538,7 +549,11 @@ void YoutubeDownloader::downloadYtDlp()
         m_ytdlpPath = downloadedYtDlpPath();
     }
 
-    emit ytdlpDownloading("Descargando yt-dlp...");
+    m_ytdlpDownloadInProgress = true;
+    emit ytdlpDownloading("Downloading yt-dlp...");
+    emit downloadCountChanged(0, 1);
+    emit downloadProgressChanged(1, 1, 0, "yt-dlp");
+    emit progressUpdate("⬇️ Downloading yt-dlp...");
 
     QNetworkAccessManager *manager = new QNetworkAccessManager(this);
     QUrl url = ytDlpDownloadUrl();
@@ -551,12 +566,15 @@ void YoutubeDownloader::downloadYtDlp()
             [this](qint64 received, qint64 total) {
                 if (total > 0) {
                     int percent = (received * 100) / total;
-                    emit ytdlpDownloading(QString("Descargando yt-dlp: %1%").arg(percent));
+                    emit ytdlpDownloading(QString("Downloading yt-dlp: %1%").arg(percent));
+                    emit downloadProgressChanged(1, 1, percent, "yt-dlp");
+                    emit progressUpdate(QString("⬇️ Downloading yt-dlp: %1%").arg(percent));
                     qDebug() << "⬇️ yt-dlp:" << percent << "%";
                 }
             });
 
     connect(reply, &QNetworkReply::finished, this, [this, reply, manager]() {
+        m_ytdlpDownloadInProgress = false;
         if (reply->error() == QNetworkReply::NoError) {
             QFileInfo targetInfo(m_ytdlpPath);
             QDir().mkpath(targetInfo.absolutePath());
@@ -571,18 +589,46 @@ void YoutubeDownloader::downloadYtDlp()
 #endif
                 qDebug() << "✅ yt-dlp descargado correctamente";
                 emit ytdlpDownloading("✅ yt-dlp listo");
+                emit downloadProgressChanged(1, 1, 100, "yt-dlp");
+                emit progressUpdate("✅ yt-dlp ready");
+                if (!m_pendingYtDlpUrl.isEmpty()) {
+                    const QString pendingUrl = m_pendingYtDlpUrl;
+                    m_pendingYtDlpUrl.clear();
+                    QTimer::singleShot(0, this, [this, pendingUrl]() { getAudioUrl(pendingUrl); });
+                }
             } else {
                 qCritical() << "❌ No se pudo guardar yt-dlp";
+                m_pendingYtDlpUrl.clear();
                 emit errorOccurred("No se pudo instalar yt-dlp");
             }
         } else {
             qCritical() << "❌ Error descargando yt-dlp:" << reply->errorString();
+            m_pendingYtDlpUrl.clear();
             emit errorOccurred("Error descargando yt-dlp. Verifica tu conexión a internet.");
         }
 
         reply->deleteLater();
         manager->deleteLater();
     });
+}
+
+bool YoutubeDownloader::ensureYtDlpReadyForRequest(const QString &youtubeUrl)
+{
+    if (QFile::exists(m_ytdlpPath)) {
+        return true;
+    }
+
+    QString embeddedPath;
+    if (extractEmbeddedYtDlp(&embeddedPath)) {
+        m_ytdlpPath = embeddedPath;
+        return true;
+    }
+
+    m_ytdlpPath = downloadedYtDlpPath();
+    m_pendingYtDlpUrl = youtubeUrl;
+    qDebug() << "⬇️ yt-dlp no existe, iniciando descarga";
+    downloadYtDlp();
+    return false;
 }
 
 void YoutubeDownloader::checkYtDlpVersion()
@@ -888,18 +934,8 @@ bool YoutubeDownloader::makeSpaceForFile(qint64 estimatedSize)
 
 void YoutubeDownloader::getAudioUrl(const QString &youtubeUrl)
 {
-    if (!QFile::exists(m_ytdlpPath)) {
-        QString embeddedPath;
-        if (extractEmbeddedYtDlp(&embeddedPath)) {
-            m_ytdlpPath = embeddedPath;
-        } else {
-            emit errorOccurred("yt-dlp no encontrado. Descargando...");
-            qCritical() << "❌ yt-dlp NO EXISTE, iniciando descarga";
-            m_ytdlpPath = downloadedYtDlpPath();
-            downloadYtDlp();
-            return;
-        }
-    }
+    if (!ensureYtDlpReadyForRequest(youtubeUrl))
+        return;
 
     m_downloadQueue.clear();
     m_downloadedCount = 0;

@@ -66,6 +66,7 @@ private:
     void calculateCurrentCacheSize();
     void cleanOldestEntries(qint64 bytesNeeded);
     void downloadYtDlp();
+    bool ensureYtDlpReadyForRequest(const QString &youtubeUrl);
     void checkYtDlpVersion();
     bool makeSpaceForFile(qint64 estimatedSize);
     QString extractVideoId(const QString &url);
@@ -89,7 +90,9 @@ private:
     qint64 m_maxFileSize;
     int m_maxSongsPerPlaylist;
     QString m_currentUrl;
+    QString m_pendingYtDlpUrl;
     bool m_isPlaylist;
+    bool m_ytdlpDownloadInProgress;
     int m_downloadedCount;
     int m_totalToDownload;
 };

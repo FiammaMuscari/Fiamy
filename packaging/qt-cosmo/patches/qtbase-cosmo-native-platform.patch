@@ -1,3 +1,58 @@
+diff --git a/cmake/QtAutoDetectHelpers.cmake b/cmake/QtAutoDetectHelpers.cmake
+index 376d92ce91f..063b4bb78fd 100644
+--- a/cmake/QtAutoDetectHelpers.cmake
++++ b/cmake/QtAutoDetectHelpers.cmake
+@@ -183,6 +183,10 @@ function(qt_auto_detect_vcpkg)
+ endfunction()
+ 
+ function(qt_auto_detect_apple)
++    if(COSMOPOLITAN OR CMAKE_TOOLCHAIN_FILE MATCHES "cosmo")
++        return()
++    endif()
++
+     if(NOT APPLE)
+         if(CMAKE_OSX_ARCHITECTURES AND NOT QT_NO_SHOW_NON_APPLE_CMAKE_OSX_ARCHITECTURES_WARNING)
+             message(WARNING
+diff --git a/cmake/QtBaseConfigureTests.cmake b/cmake/QtBaseConfigureTests.cmake
+index c50723e43a2..664ca48006a 100644
+--- a/cmake/QtBaseConfigureTests.cmake
++++ b/cmake/QtBaseConfigureTests.cmake
+@@ -50,6 +50,9 @@ function(qt_internal_run_config_test_architecture)
+     endif()
+ 
+     set(_arch_file_suffix "${CMAKE_EXECUTABLE_SUFFIX}")
++    if(COSMOPOLITAN AND NOT _arch_file_suffix)
++        set(_arch_file_suffix ".com")
++    endif()
+     # With emscripten the application entry point is a .js file (to be run with node for example),
+     # but the real "data" is in the .wasm file, so that's where we need to look for the ABI, etc.
+     # information.
+diff --git a/mkspecs/linux-g++/qplatformdefs.h b/mkspecs/linux-g++/qplatformdefs.h
+index e376f1865a9..f9a142521e8 100644
+--- a/mkspecs/linux-g++/qplatformdefs.h
++++ b/mkspecs/linux-g++/qplatformdefs.h
+@@ -32,15 +32,21 @@
+ 
+ #include <sys/types.h>
+ #include <sys/ioctl.h>
++#ifndef __COSMOPOLITAN__
+ #include <sys/ipc.h>
++#endif
+ #include <sys/time.h>
++#ifndef __COSMOPOLITAN__
+ #include <sys/shm.h>
++#endif
+ #include <sys/socket.h>
+ #include <sys/stat.h>
+ #include <sys/wait.h>
+ #include <netinet/in.h>
+ 
++#ifndef __COSMOPOLITAN__
+ #define QT_USE_XOPEN_LFS_EXTENSIONS
++#endif
+ #include "../common/posix/qplatformdefs.h"
+ 
+ #if defined(_XOPEN_SOURCE) && (_XOPEN_SOURCE >= 500)
 diff --git a/src/corelib/CMakeLists.txt b/src/corelib/CMakeLists.txt
 index 6412b178c73..589717ed7e4 100644
 --- a/src/corelib/CMakeLists.txt
@@ -2532,6 +2587,25 @@ index 00000000000..54bcae51102
 +QT_END_NAMESPACE
 +
 +#endif
+diff --git a/src/corelib/time/qlocaltime.cpp b/src/corelib/time/qlocaltime.cpp
+index 609a5a4b37b..0fe996f1b96 100644
+--- a/src/corelib/time/qlocaltime.cpp
++++ b/src/corelib/time/qlocaltime.cpp
+@@ -651,11 +651,11 @@ SystemMillisRange computeSystemMillisRange()
+     // Assert this here, as this is called just once, in a static initialization.
+     Q_ASSERT(QGregorianCalendar::julianFromParts(1970, 1, 1) == JULIAN_DAY_FOR_EPOCH);
+ 
+-    constexpr qint64 TIME_T_MAX = std::numeric_limits<time_t>::max();
++    constexpr qint64 qt_time_t_max = std::numeric_limits<time_t>::max();
+     using Bounds = std::numeric_limits<qint64>;
+-    constexpr bool isNarrow = Bounds::max() / MSECS_PER_SEC > TIME_T_MAX;
++    constexpr bool isNarrow = Bounds::max() / MSECS_PER_SEC > qt_time_t_max;
+     if constexpr (isNarrow) {
+-        const qint64 msecsMax = quint64(TIME_T_MAX) * MSECS_PER_SEC - 1 + MSECS_PER_SEC;
++        const qint64 msecsMax = quint64(qt_time_t_max) * MSECS_PER_SEC - 1 + MSECS_PER_SEC;
+         const qint64 msecsMin = -1 - msecsMax; // TIME_T_MIN is -1 - TIME_T_MAX
+         // If we reach back to msecsMin, use it; otherwise, assume 1970 cut-off (MS).
+         struct tm local = {};
 diff --git a/src/gui/kernel/qevent.h b/src/gui/kernel/qevent.h
 index 2374e527e3e..2aa7de1e245 100644
 --- a/src/gui/kernel/qevent.h
@@ -2630,6 +2704,19 @@ index fec73e1987b..f2cad08f81b 100644
  
  protected:
      explicit QInputControl(Type type, QObjectPrivate &dd, QObject *parent = nullptr);
+diff --git a/src/network/kernel/qnetworkinterface_unix.cpp b/src/network/kernel/qnetworkinterface_unix.cpp
+index 39ff8dbb928..639f71e7acb 100644
+--- a/src/network/kernel/qnetworkinterface_unix.cpp
++++ b/src/network/kernel/qnetworkinterface_unix.cpp
+@@ -116,7 +116,7 @@ QString QNetworkInterfaceManager::interfaceNameFromIndex(uint index)
+ 
+ static int getMtu(int socket, struct ifreq *req)
+ {
+-#ifdef SIOCGIFMTU
++#if defined(SIOCGIFMTU) && !defined(__COSMOPOLITAN__)
+     if (qt_safe_ioctl(socket, SIOCGIFMTU, req) == 0)
+         return req->ifr_mtu;
+ #endif
 diff --git a/src/plugins/platforms/CMakeLists.txt b/src/plugins/platforms/CMakeLists.txt
 index 69071a22c24..f2f97239124 100644
 --- a/src/plugins/platforms/CMakeLists.txt

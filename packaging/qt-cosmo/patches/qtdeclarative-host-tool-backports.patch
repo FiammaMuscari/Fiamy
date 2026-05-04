@@ -1,3 +1,37 @@
+diff --git a/src/3rdparty/masm/assembler/ARM64Assembler.h b/src/3rdparty/masm/assembler/ARM64Assembler.h
+index 847b0b09..4346c014 100644
+--- a/src/3rdparty/masm/assembler/ARM64Assembler.h
++++ b/src/3rdparty/masm/assembler/ARM64Assembler.h
+@@ -3017,7 +3017,7 @@ public:
+         return static_cast<int32_t*>(m_buffer.data())[location / sizeof(int32_t) - 1];
+     }
+ 
+-#if OS(LINUX)
++#if OS(LINUX) || defined(__COSMOPOLITAN__)
+     static inline void linuxPageFlush(uintptr_t begin, uintptr_t end)
+     {
+         __builtin___clear_cache(reinterpret_cast<char*>(begin), reinterpret_cast<char*>(end));
+@@ -3028,7 +3028,7 @@ public:
+     {
+ #if OS(IOS)
+         sys_cache_control(kCacheFunctionPrepareForExecution, code, size);
+-#elif OS(LINUX)
++#elif OS(LINUX) || defined(__COSMOPOLITAN__)
+         size_t page = pageSize();
+         uintptr_t current = reinterpret_cast<uintptr_t>(code);
+         uintptr_t end = current + size;
+diff --git a/src/3rdparty/yoga/Utils.cpp b/src/3rdparty/yoga/Utils.cpp
+index 80b0af99..c4eb74b2 100644
+--- a/src/3rdparty/yoga/Utils.cpp
++++ b/src/3rdparty/yoga/Utils.cpp
+@@ -4,6 +4,7 @@
+ // SPDX-License-Identifier: MIT
+ 
+ #include "Utils.h"
++#include <exception>
+ #include <stdexcept>
+ 
+ using namespace facebook;
 diff --git a/src/qml/qml/qqml.h b/src/qml/qml/qqml.h
 index d9b8ed66..8317628f 100644
 --- a/src/qml/qml/qqml.h
@@ -22,23 +56,11 @@ index d9b8ed66..8317628f 100644
  int Q_QML_EXPORT qmlTypeId(const char *uri, int versionMajor, int versionMinor, const char *qmlName);
  
  QT_END_NAMESPACE
-diff --git a/src/3rdparty/yoga/Utils.cpp b/src/3rdparty/yoga/Utils.cpp
-index ccf8c6a0..63c3c568 100644
---- a/src/3rdparty/yoga/Utils.cpp
-+++ b/src/3rdparty/yoga/Utils.cpp
-@@ -4,6 +4,7 @@
- // SPDX-License-Identifier: MIT
- 
- #include "Utils.h"
-+#include <exception>
- #include <stdexcept>
- 
- using namespace facebook;
 diff --git a/src/qmlcompiler/qqmljsannotation_p.h b/src/qmlcompiler/qqmljsannotation_p.h
-index 221146d0..d1bd6dea 100644
+index a82b03cd..1a63e143 100644
 --- a/src/qmlcompiler/qqmljsannotation_p.h
 +++ b/src/qmlcompiler/qqmljsannotation_p.h
-@@ -47,7 +47,7 @@ public:
+@@ -47,7 +47,7 @@ struct QQmlJSAnnotation
  
      friend size_t qHash(const QQmlJSAnnotation &annotation, size_t seed = 0)
      {
@@ -48,7 +70,7 @@ index 221146d0..d1bd6dea 100644
  
          for (auto it = annotation.bindings.constBegin(); it != annotation.bindings.constEnd(); ++it) {
 diff --git a/src/qmlcompiler/qqmljsmetatypes_p.h b/src/qmlcompiler/qqmljsmetatypes_p.h
-index d76e6c24..37760db4 100644
+index 829ad6ed..4ceb66b4 100644
 --- a/src/qmlcompiler/qqmljsmetatypes_p.h
 +++ b/src/qmlcompiler/qqmljsmetatypes_p.h
 @@ -342,7 +342,7 @@ public:

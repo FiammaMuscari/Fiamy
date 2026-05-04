@@ -381,6 +381,13 @@ ColumnLayout {
                 .replace(/^❌\s*/, "Error: ")
         }
 
+        function onYtdlpDownloading(message) {
+            console.log("📡", message)
+            statusMessage = String(message)
+                .replace(/^⬇️\s*/, "")
+                .replace(/^✅\s*/, "")
+        }
+
         function onDownloadCountChanged(downloaded, total) {
             downloadedCount = downloaded
             totalToDownload = total
