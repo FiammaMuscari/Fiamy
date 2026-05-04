@@ -77,18 +77,6 @@ copy_fontconfig_runtime() {
   done
 }
 
-copy_mesa_runtime() {
-  if [[ -d "/usr/lib/x86_64-linux-gnu/dri" ]]; then
-    mkdir -p "${PORTABLE_DIR}/lib/x86_64-linux-gnu/dri"
-    while IFS= read -r -d '' dri_driver; do
-      cp -aL "${dri_driver}" "${PORTABLE_DIR}/lib/x86_64-linux-gnu/dri/"
-    done < <(
-      find /usr/lib/x86_64-linux-gnu/dri -maxdepth 1 -type f \
-        \( -name 'swrast_dri.so' -o -name 'kms_swrast_dri.so' -o -name 'zink_dri.so' \) -print0
-    )
-  fi
-}
-
 prune_forbidden_runtime_libraries() {
   local base
   local removed=0
@@ -140,7 +128,6 @@ done
 copy_fontconfig_runtime
 prune_forbidden_runtime_libraries
 "${ROOT_DIR}/packaging/linux/deploy-runtime-libs.sh" "${PORTABLE_DIR}"
-copy_mesa_runtime
 prune_forbidden_runtime_libraries
 "${ROOT_DIR}/packaging/linux/verify-linux-bundle.sh" "${PORTABLE_DIR}"
 
@@ -158,7 +145,6 @@ export FONTCONFIG_PATH="${APPDIR}/etc/fonts"
 export FONTCONFIG_FILE="${APPDIR}/etc/fonts/fonts.conf"
 export FONTCONFIG_SYSROOT="${APPDIR}"
 export XDG_DATA_DIRS="${APPDIR}/usr/share${XDG_DATA_DIRS:+:${XDG_DATA_DIRS}}"
-export LIBGL_DRIVERS_PATH="${APPDIR}/lib/x86_64-linux-gnu/dri${LIBGL_DRIVERS_PATH:+:${LIBGL_DRIVERS_PATH}}"
 export QT_QUICK_BACKEND="${QT_QUICK_BACKEND:-software}"
 
 exec "${APPDIR}/bin/fiamy" "$@"

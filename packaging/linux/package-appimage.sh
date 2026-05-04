@@ -35,7 +35,6 @@ export FONTCONFIG_PATH="${APPDIR}/usr/etc/fonts"
 export FONTCONFIG_FILE="${APPDIR}/usr/etc/fonts/fonts.conf"
 export FONTCONFIG_SYSROOT="${APPDIR}/usr"
 export XDG_DATA_DIRS="${APPDIR}/usr/share${XDG_DATA_DIRS:+:${XDG_DATA_DIRS}}"
-export LIBGL_DRIVERS_PATH="${APPDIR}/usr/lib/x86_64-linux-gnu/dri${LIBGL_DRIVERS_PATH:+:${LIBGL_DRIVERS_PATH}}"
 export QT_QUICK_BACKEND="${QT_QUICK_BACKEND:-software}"
 
 exec "${APPDIR}/usr/bin/fiamy" "$@"
