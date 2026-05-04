@@ -37,9 +37,8 @@ run_check() {
 
 run_check "AppImage" '
   apt update >/dev/null &&
-  cd /app &&
-  appimage=$(echo Fiamy-*.AppImage) &&
-  [ "${appimage}" != "Fiamy-*.AppImage" ] &&
+  appimage=$(echo /app/linux-appimage/Fiamy-*.AppImage) &&
+  [ "${appimage}" != "/app/linux-appimage/Fiamy-*.AppImage" ] &&
   chmod +x "${appimage}" &&
   QT_QPA_PLATFORM=offscreen "${appimage}" --appimage-extract-and-run
 '
@@ -47,16 +46,16 @@ run_check "AppImage" '
 run_check "portable" '
   apt update >/dev/null &&
   cd /app &&
-  archive=$(echo fiamy-*-linux-portable-x86_64.tar.gz) &&
-  [ "${archive}" != "fiamy-*-linux-portable-x86_64.tar.gz" ] &&
+  archive=$(echo /app/linux-portable/fiamy-*-linux-portable-x86_64.tar.gz) &&
+  [ "${archive}" != "/app/linux-portable/fiamy-*-linux-portable-x86_64.tar.gz" ] &&
   tar -xzf "${archive}" >/dev/null 2>&1 &&
   QT_QPA_PLATFORM=offscreen ./fiamy-linux-portable/Fiamy.sh
 '
 
 run_check ".deb" '
   apt update >/dev/null &&
-  deb=$(echo /app/fiamy_*_ubuntu-debian-bundled_amd64.deb) &&
-  [ "${deb}" != "/app/fiamy_*_ubuntu-debian-bundled_amd64.deb" ] &&
+  deb=$(echo /app/linux-deb/fiamy_*_ubuntu-debian-bundled_amd64.deb) &&
+  [ "${deb}" != "/app/linux-deb/fiamy_*_ubuntu-debian-bundled_amd64.deb" ] &&
   apt install -y "${deb}" >/dev/null &&
   QT_QPA_PLATFORM=offscreen fiamy
 '
