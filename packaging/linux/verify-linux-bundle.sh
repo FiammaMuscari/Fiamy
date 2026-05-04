@@ -9,6 +9,7 @@ fi
 BUNDLE_ROOT="$(cd "$1" && pwd)"
 LIB_REL="${2:-lib/x86_64-linux-gnu}"
 LIB_DIR="${BUNDLE_ROOT}/${LIB_REL}"
+ROOT_LIB_DIR="${BUNDLE_ROOT}/lib"
 
 if [[ ! -d "${LIB_DIR}" ]]; then
   echo "Runtime library directory not found: ${LIB_DIR}" >&2
@@ -118,9 +119,9 @@ while IFS= read -r -d '' elf; do
       # and unresolved libraries.
       echo "Warning: host dependency remains: ${dep##*/} for ${elf#"${BUNDLE_ROOT}/"}" >&2
     fi
-  done < <(LD_LIBRARY_PATH="${LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" ldd "${elf}" 2>&1 || true)
+  done < <(LD_LIBRARY_PATH="${ROOT_LIB_DIR}:${LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" ldd "${elf}" 2>&1 || true)
 done < <(
-  find "${BUNDLE_ROOT}/bin" "${LIB_DIR}" -type f -print0 2>/dev/null || true
+  find "${BUNDLE_ROOT}/bin" "${ROOT_LIB_DIR}" "${LIB_DIR}" -type f -print0 2>/dev/null || true
 )
 
 if [[ "${checked}" -eq 0 ]]; then

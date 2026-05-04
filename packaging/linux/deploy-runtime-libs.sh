@@ -9,6 +9,7 @@ fi
 BUNDLE_ROOT="$(cd "$1" && pwd)"
 LIB_REL="${2:-lib/x86_64-linux-gnu}"
 LIB_DIR="${BUNDLE_ROOT}/${LIB_REL}"
+ROOT_LIB_DIR="${BUNDLE_ROOT}/lib"
 
 if [[ ! -d "${LIB_DIR}" ]]; then
   echo "Runtime library directory not found: ${LIB_DIR}" >&2
@@ -47,7 +48,7 @@ should_exclude_library() {
 
 resolved_dependencies() {
   local elf="$1"
-  LD_LIBRARY_PATH="${LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" ldd "${elf}" 2>/dev/null \
+  LD_LIBRARY_PATH="${ROOT_LIB_DIR}:${LIB_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" ldd "${elf}" 2>/dev/null \
     | awk '
       /version `[^'"'"']+'"'"' not found/ { next }
       /=>[[:space:]]+not found/ { next }
@@ -94,7 +95,7 @@ while IFS= read -r -d '' candidate; do
     queue+=("${candidate}")
   fi
 done < <(
-  find "${BUNDLE_ROOT}/bin" "${LIB_DIR}" -type f -print0 2>/dev/null || true
+  find "${BUNDLE_ROOT}/bin" "${ROOT_LIB_DIR}" "${LIB_DIR}" -type f -print0 2>/dev/null || true
 )
 
 for ((i = 0; i < ${#queue[@]}; i++)); do
@@ -129,7 +130,7 @@ if command -v patchelf >/dev/null 2>&1; then
     patchelf --set-rpath "${rpath}" "${elf}" 2>/dev/null || \
       echo "Warning: could not set RUNPATH on ${elf}" >&2
   done < <(
-    find "${BUNDLE_ROOT}/bin" "${LIB_DIR}" -type f -print0 2>/dev/null || true
+    find "${BUNDLE_ROOT}/bin" "${ROOT_LIB_DIR}" "${LIB_DIR}" -type f -print0 2>/dev/null || true
   )
 else
   echo "Warning: patchelf not found; ELF RUNPATHs were not normalized." >&2
