@@ -31,6 +31,12 @@ export QT_PLUGIN_PATH="${APPDIR}/usr/lib/x86_64-linux-gnu/qt6/plugins${QT_PLUGIN
 export QML2_IMPORT_PATH="${APPDIR}/usr/lib/x86_64-linux-gnu/qt6/qml${QML2_IMPORT_PATH:+:${QML2_IMPORT_PATH}}"
 export QT_QPA_PLATFORM_PLUGIN_PATH="${APPDIR}/usr/lib/x86_64-linux-gnu/qt6/plugins/platforms"
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland;xcb}"
+export FONTCONFIG_PATH="${APPDIR}/usr/etc/fonts"
+export FONTCONFIG_FILE="${APPDIR}/usr/etc/fonts/fonts.conf"
+export FONTCONFIG_SYSROOT="${APPDIR}/usr"
+export XDG_DATA_DIRS="${APPDIR}/usr/share${XDG_DATA_DIRS:+:${XDG_DATA_DIRS}}"
+export LIBGL_DRIVERS_PATH="${APPDIR}/usr/lib/x86_64-linux-gnu/dri${LIBGL_DRIVERS_PATH:+:${LIBGL_DRIVERS_PATH}}"
+export QT_QUICK_BACKEND="${QT_QUICK_BACKEND:-software}"
 
 exec "${APPDIR}/usr/bin/fiamy" "$@"
 EOF

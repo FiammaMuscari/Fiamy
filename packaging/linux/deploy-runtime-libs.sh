@@ -34,7 +34,7 @@ should_exclude_library() {
     libc.so*|libpthread.so*|libdl.so*|librt.so*|libm.so*|libmvec.so*|libutil.so*|libanl.so*|libresolv.so*|libnss_*.so*|libcrypt.so*|libthread_db.so*)
       return 0
       ;;
-    libGL.so*|libEGL.so*|libGLX.so*|libOpenGL.so*|libGLdispatch.so*|libvulkan.so*|libdrm.so*|libgbm.so*|libva.so*|libva-drm.so*|libva-x11.so*|libvdpau.so*|libOpenCL.so*|libcuda.so*|libnvidia-*.so*)
+    libvulkan.so*|libva.so*|libva-drm.so*|libva-x11.so*|libvdpau.so*|libOpenCL.so*|libcuda.so*|libnvidia-*.so*)
       return 0
       ;;
     libsystemd.so*|libudev.so*)
