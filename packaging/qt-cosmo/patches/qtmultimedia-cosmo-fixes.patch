@@ -1,3 +1,15 @@
+diff --git a/src/multimediaquick/CMakeLists.txt b/src/multimediaquick/CMakeLists.txt
+index 403b7c6d6..4cd1b0bc1 100644
+--- a/src/multimediaquick/CMakeLists.txt
++++ b/src/multimediaquick/CMakeLists.txt
+@@ -12,6 +12,7 @@ set(qml_files
+ qt_internal_add_qml_module(MultimediaQuickPrivate
+     URI "QtMultimedia"
+     VERSION "${PROJECT_VERSION}"
++    NO_CACHEGEN
+     PAST_MAJOR_VERSIONS 5
+     CLASS_NAME QMultimediaQuickModule
+     PLUGIN_TARGET quickmultimedia
 diff --git a/CMakeLists.txt b/CMakeLists.txt
 index d80a573fb..20db8b590 100644
 --- a/CMakeLists.txt

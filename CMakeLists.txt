@@ -126,11 +126,8 @@ set(RESOURCE_FILES
 )
 
 set(FIAMY_EMBED_YT_DLP_DEFAULT OFF)
-if(COSMOPOLITAN)
-    set(FIAMY_EMBED_YT_DLP_DEFAULT ON)
-endif()
 set(FIAMY_EMBED_YT_DLP "${FIAMY_EMBED_YT_DLP_DEFAULT}" CACHE BOOL
-    "Embed standalone yt-dlp binaries for Windows, macOS, and Linux into the Cosmopolitan executable")
+    "Embed standalone yt-dlp binaries for Windows, macOS, and Linux into the executable instead of downloading on first use")
 set(FIAMY_YT_DLP_ASSET_DIR "${CMAKE_CURRENT_BINARY_DIR}/yt-dlp-assets" CACHE PATH
     "Directory used to cache yt-dlp binaries embedded in Cosmopolitan builds")
 set(FIAMY_YT_DLP_LINUX_PATH "" CACHE FILEPATH "Optional pre-downloaded yt-dlp Linux binary")
@@ -425,6 +422,17 @@ if(COSMOPOLITAN)
     if(NOT QT_COSMO_PREFIX)
         message(FATAL_ERROR "Set QT_COSMO_PREFIX to the Qt Cosmopolitan install prefix.")
     endif()
+    set(FFMPEG_DIR "" CACHE PATH "Static FFmpeg prefix used by the Cosmopolitan build")
+    if(FFMPEG_DIR)
+        target_include_directories(Fiamy PRIVATE "${FFMPEG_DIR}/include")
+        target_link_libraries(Fiamy PRIVATE
+            "${FFMPEG_DIR}/lib/libavformat.a"
+            "${FFMPEG_DIR}/lib/libavcodec.a"
+            "${FFMPEG_DIR}/lib/libswresample.a"
+            "${FFMPEG_DIR}/lib/libswscale.a"
+            "${FFMPEG_DIR}/lib/libavutil.a"
+        )
+    endif()
 
     find_package(Qt6QCosmoNativeIntegrationPlugin CONFIG REQUIRED
         PATHS "${QT_COSMO_PREFIX}/lib/cmake/Qt6Gui"
@@ -496,6 +504,7 @@ if(COSMOPOLITAN)
         INCLUDE
             Qt6::QCosmoNativeIntegrationPlugin
             Qt6::QFFmpegMediaPlugin
+            Qt6::QTlsBackendOpenSSLPlugin
     )
 endif()
 
@@ -512,7 +521,7 @@ if(WIN32)
     endif()
 endif()
 
-if(UNIX AND NOT APPLE)
+if(UNIX AND NOT APPLE AND NOT COSMOPOLITAN)
     include(GNUInstallDirs)
 
     set(FIAMY_LINUX_DESKTOP_TEMPLATE "${CMAKE_CURRENT_SOURCE_DIR}/platform/linux/fiamy.desktop.in")

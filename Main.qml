@@ -43,6 +43,7 @@ Window {
         property string currentSongName: "Title"
         property string currentSongTitle: "Title"
         property string currentSongAuthor: ""
+        property bool pendingAutoplay: false
 
         function refreshCurrentSongName() {
             if (currentIndex >= 0 && currentIndex < playlistCount) {
@@ -282,6 +283,12 @@ Window {
 
             onPlaybackStateChanged: {
                 playerManager.isPlaying = (playbackState === MediaPlayer.PlayingState)
+                console.log("▶️ PlaybackState:", playbackState)
+
+                if (playbackState === MediaPlayer.PlayingState) {
+                    playerManager.pendingAutoplay = false
+                    playbackRetryTimer.stop()
+                }
 
                 if (playbackState === MediaPlayer.StoppedState) {
                     console.log("🔍 Player detenido - position:", player.position, "duration:", player.duration)
@@ -290,6 +297,13 @@ Window {
 
             onMediaStatusChanged: {
                 console.log("📊 MediaStatus:", mediaStatus)
+
+                if (playerManager.pendingAutoplay
+                        && (mediaStatus === MediaPlayer.LoadedMedia
+                            || mediaStatus === MediaPlayer.BufferedMedia
+                            || mediaStatus === MediaPlayer.BufferingMedia)) {
+                    Qt.callLater(playerManager.ensurePlaybackStarted)
+                }
 
                 if (mediaStatus === MediaPlayer.EndOfMedia) {
                     console.log("🎵 Canción TERMINADA (EndOfMedia), avanzando...")
@@ -303,15 +317,41 @@ Window {
             }
         }
 
+        Timer {
+            id: playbackRetryTimer
+            interval: 250
+            repeat: true
+            running: false
+            onTriggered: playerManager.ensurePlaybackStarted()
+        }
+
+        function ensurePlaybackStarted() {
+            if (!pendingAutoplay || currentIndex < 0)
+                return
+
+            if (player.playbackState === MediaPlayer.PlayingState) {
+                pendingAutoplay = false
+                playbackRetryTimer.stop()
+                return
+            }
+
+            console.log("▶️ Reintentando reproducción - status:", player.mediaStatus,
+                        "state:", player.playbackState,
+                        "source:", player.source)
+            player.play()
+        }
+
         function playSong(index) {
             if (index >= 0 && index < playlistCount) {
                 currentIndex = index
                 refreshCurrentSongName()
                 currentPosition = 0
                 currentDuration = 0
+                pendingAutoplay = true
                 player.stop()
                 player.source = playlist[index].url
-                player.play()
+                playbackRetryTimer.restart()
+                Qt.callLater(ensurePlaybackStarted)
                 console.log("▶️ Reproduciendo:", currentSongName, "source:", playlist[index].url)
             }
         }

@@ -1,0 +1,44 @@
+diff --git a/libavutil/tx_template.c b/libavutil/tx_template.c
+index 2d7dd47f3e..0000000000 100644
+--- a/libavutil/tx_template.c
++++ b/libavutil/tx_template.c
+@@ -1033,6 +1033,9 @@ static av_cold int TX_NAME(ff_tx_fft_pfa_init)(AVTXContext *s,
+     if (ret < 0)
+         return ret;
+ 
++    if (!s->sub || s->nb_sub < 2)
++        return AVERROR(EINVAL);
++
+     /* Generate PFA map */
+     if ((ret = ff_tx_gen_compound_mapping(s, opts, 0,
+                                           s->sub[0].len, s->sub[1].len)))
+diff --git a/libavutil/cpu.c b/libavutil/cpu.c
+index 7293d86f7f..0000000000 100644
+--- a/libavutil/cpu.c
++++ b/libavutil/cpu.c
+@@ -38,7 +38,7 @@
+ #if HAVE_GETPROCESSAFFINITYMASK || HAVE_WINRT
+ #include <windows.h>
+ #endif
+-#if HAVE_SYSCTL
++#if HAVE_SYSCTL && !defined(__COSMOPOLITAN__)
+ #if HAVE_SYS_PARAM_H
+ #include <sys/param.h>
+ #endif
+@@ -238,14 +238,14 @@ int av_cpu_count(void)
+     GetProcessAffinityMask(GetCurrentProcess(), &proc_aff, &sys_aff);
+     nb_cpus = av_popcount64(proc_aff);
+ #endif
+-#elif HAVE_SYSCTL && defined(HW_NCPUONLINE)
++#elif HAVE_SYSCTL && !defined(__COSMOPOLITAN__) && defined(HW_NCPUONLINE)
+     int mib[2] = { CTL_HW, HW_NCPUONLINE };
+     size_t len = sizeof(nb_cpus);
+ 
+     if (sysctl(mib, 2, &nb_cpus, &len, NULL, 0) == -1)
+         nb_cpus = 0;
+ 
+-#elif HAVE_SYSCTL && defined(HW_NCPU)
++#elif HAVE_SYSCTL && !defined(__COSMOPOLITAN__) && defined(HW_NCPU)
+     int mib[2] = { CTL_HW, HW_NCPU };
+     size_t len = sizeof(nb_cpus);
+ 

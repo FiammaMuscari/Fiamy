@@ -19,10 +19,18 @@
 #include <QNetworkReply>
 #include <QFileDevice>
 #include <QSysInfo>
+#include <QScopeGuard>
+#include <limits>
 
 #ifdef __COSMOPOLITAN__
 extern "C" {
 #include <libc/dce.h>
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+#include <libavutil/channel_layout.h>
+#include <libavutil/error.h>
+#include <libavutil/opt.h>
+#include <libswresample/swresample.h>
 }
 #endif
 
@@ -280,12 +288,16 @@ static QString getYtDlpPath()
         return embeddedPath;
     }
 
+    const QString downloadedPath = downloadedYtDlpPath();
+#ifdef __COSMOPOLITAN__
+    return downloadedPath;
+#endif
+
     const QString systemPath = QStandardPaths::findExecutable("yt-dlp");
     if (!systemPath.isEmpty()) {
         return systemPath;
     }
 
-    const QString downloadedPath = downloadedYtDlpPath();
     if (QFileInfo::exists(downloadedPath)) {
         return downloadedPath;
     }
@@ -332,10 +344,7 @@ static QUrl ytDlpDownloadUrl()
 static QStringList playableAudioExtensions()
 {
 #ifdef __COSMOPOLITAN__
-    if (IsXnu()) {
-        return {"wav", "mp3", "flac"};
-    }
-    return {"m4a", "mp4", "mp3", "aac", "wav", "flac"};
+    return {"wav"};
 #elif defined(Q_OS_MACOS)
     return {"mp4", "m4a", "mp3", "aac", "wav", "flac"};
 #else
@@ -346,9 +355,7 @@ static QStringList playableAudioExtensions()
 static QStringList convertibleAudioExtensions()
 {
 #ifdef __COSMOPOLITAN__
-    if (IsXnu()) {
-        return {"m4a", "mp4", "aac"};
-    }
+    return {"m4a", "mp4", "aac", "webm", "opus", "ogg", "mp3", "flac"};
 #endif
     return {};
 }
@@ -384,10 +391,239 @@ static QString findExistingAudioFile(const QString &videoId, const QStringList &
     return {};
 }
 
+#ifdef __COSMOPOLITAN__
+static void writeWavU16(QFile &out, quint16 value)
+{
+    out.write(reinterpret_cast<const char *>(&value), sizeof(value));
+}
+
+static void writeWavU32(QFile &out, quint32 value)
+{
+    out.write(reinterpret_cast<const char *>(&value), sizeof(value));
+}
+
+static bool writeWavHeader(QFile &out, quint32 dataBytes, int sampleRate, int channels)
+{
+    if (!out.seek(0))
+        return false;
+
+    const quint16 bitsPerSample = 16;
+    const quint16 blockAlign = quint16(channels * bitsPerSample / 8);
+    const quint32 byteRate = quint32(sampleRate * blockAlign);
+
+    out.write("RIFF", 4);
+    writeWavU32(out, 36u + dataBytes);
+    out.write("WAVE", 4);
+    out.write("fmt ", 4);
+    writeWavU32(out, 16);
+    writeWavU16(out, 1);
+    writeWavU16(out, quint16(channels));
+    writeWavU32(out, quint32(sampleRate));
+    writeWavU32(out, byteRate);
+    writeWavU16(out, blockAlign);
+    writeWavU16(out, bitsPerSample);
+    out.write("data", 4);
+    writeWavU32(out, dataBytes);
+    return out.error() == QFile::NoError;
+}
+
+static QString ffmpegErrorString(int code)
+{
+    char buffer[AV_ERROR_MAX_STRING_SIZE] = {};
+    av_strerror(code, buffer, sizeof(buffer));
+    return QString::fromLocal8Bit(buffer);
+}
+
+static QString convertWithFfmpegToWav(const QString &filePath)
+{
+    const QFileInfo inputInfo(filePath);
+    if (!inputInfo.exists() || !inputInfo.isFile())
+        return {};
+
+    const QString outputPath = inputInfo.dir().filePath(inputInfo.completeBaseName() + ".wav");
+    if (isValidAudioFile(outputPath))
+        return outputPath;
+
+    AVFormatContext *formatContext = nullptr;
+    QByteArray inputPath = QFile::encodeName(inputInfo.absoluteFilePath());
+    int status = avformat_open_input(&formatContext, inputPath.constData(), nullptr, nullptr);
+    if (status < 0) {
+        qWarning() << "⚠️ FFmpeg no pudo abrir audio para convertir:" << ffmpegErrorString(status);
+        return {};
+    }
+    auto closeInput = qScopeGuard([&] { avformat_close_input(&formatContext); });
+
+    status = avformat_find_stream_info(formatContext, nullptr);
+    if (status < 0) {
+        qWarning() << "⚠️ FFmpeg no pudo leer metadata de audio:" << ffmpegErrorString(status);
+        return {};
+    }
+
+    const int streamIndex = av_find_best_stream(formatContext, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+    if (streamIndex < 0) {
+        qWarning() << "⚠️ FFmpeg no encontró stream de audio:" << ffmpegErrorString(streamIndex);
+        return {};
+    }
+
+    AVStream *stream = formatContext->streams[streamIndex];
+    const AVCodec *codec = avcodec_find_decoder(stream->codecpar->codec_id);
+    if (!codec) {
+        qWarning() << "⚠️ FFmpeg no tiene decoder para codec:" << stream->codecpar->codec_id;
+        return {};
+    }
+
+    AVCodecContext *codecContext = avcodec_alloc_context3(codec);
+    if (!codecContext)
+        return {};
+    auto freeCodec = qScopeGuard([&] { avcodec_free_context(&codecContext); });
+
+    status = avcodec_parameters_to_context(codecContext, stream->codecpar);
+    if (status < 0) {
+        qWarning() << "⚠️ FFmpeg no pudo preparar decoder:" << ffmpegErrorString(status);
+        return {};
+    }
+
+    status = avcodec_open2(codecContext, codec, nullptr);
+    if (status < 0) {
+        qWarning() << "⚠️ FFmpeg no pudo abrir decoder:" << ffmpegErrorString(status);
+        return {};
+    }
+
+    const int outputRate = codecContext->sample_rate > 0 ? codecContext->sample_rate : 44100;
+    const int outputChannels = 2;
+    AVChannelLayout outputLayout;
+    av_channel_layout_default(&outputLayout, outputChannels);
+    auto uninitLayout = qScopeGuard([&] { av_channel_layout_uninit(&outputLayout); });
+
+    SwrContext *swr = nullptr;
+    status = swr_alloc_set_opts2(&swr,
+                                 &outputLayout,
+                                 AV_SAMPLE_FMT_S16,
+                                 outputRate,
+                                 &codecContext->ch_layout,
+                                 codecContext->sample_fmt,
+                                 codecContext->sample_rate,
+                                 0,
+                                 nullptr);
+    if (status < 0 || !swr) {
+        qWarning() << "⚠️ FFmpeg no pudo crear resampler:" << ffmpegErrorString(status);
+        return {};
+    }
+    auto freeSwr = qScopeGuard([&] { swr_free(&swr); });
+
+    status = swr_init(swr);
+    if (status < 0) {
+        qWarning() << "⚠️ FFmpeg no pudo iniciar resampler:" << ffmpegErrorString(status);
+        return {};
+    }
+
+    const QString tempPath = outputPath + ".tmp";
+    QFile::remove(tempPath);
+    QFile out(tempPath);
+    if (!out.open(QIODevice::WriteOnly))
+        return {};
+    if (!writeWavHeader(out, 0, outputRate, outputChannels))
+        return {};
+
+    AVPacket *packet = av_packet_alloc();
+    AVFrame *frame = av_frame_alloc();
+    if (!packet || !frame) {
+        av_packet_free(&packet);
+        av_frame_free(&frame);
+        return {};
+    }
+    auto freePacketFrame = qScopeGuard([&] {
+        av_packet_free(&packet);
+        av_frame_free(&frame);
+    });
+
+    quint64 dataBytes = 0;
+    auto receiveFrames = [&]() -> bool {
+        while (true) {
+            const int receiveStatus = avcodec_receive_frame(codecContext, frame);
+            if (receiveStatus == AVERROR(EAGAIN) || receiveStatus == AVERROR_EOF)
+                return true;
+            if (receiveStatus < 0) {
+                qWarning() << "⚠️ FFmpeg falló decodificando audio:" << ffmpegErrorString(receiveStatus);
+                return false;
+            }
+
+            const int outSamples = av_rescale_rnd(
+                    swr_get_delay(swr, codecContext->sample_rate) + frame->nb_samples,
+                    outputRate,
+                    codecContext->sample_rate,
+                    AV_ROUND_UP);
+            QByteArray pcm(outSamples * outputChannels * int(sizeof(qint16)), Qt::Uninitialized);
+            auto *pcmData = reinterpret_cast<uint8_t *>(pcm.data());
+            const int converted = swr_convert(swr,
+                                              &pcmData,
+                                              outSamples,
+                                              const_cast<const uint8_t **>(frame->extended_data),
+                                              frame->nb_samples);
+            av_frame_unref(frame);
+            if (converted < 0) {
+                qWarning() << "⚠️ FFmpeg falló convirtiendo PCM:" << ffmpegErrorString(converted);
+                return false;
+            }
+
+            const qsizetype bytes = qsizetype(converted) * outputChannels * qsizetype(sizeof(qint16));
+            if (out.write(pcm.constData(), bytes) != bytes)
+                return false;
+            dataBytes += quint64(bytes);
+        }
+    };
+
+    while ((status = av_read_frame(formatContext, packet)) >= 0) {
+        if (packet->stream_index == streamIndex) {
+            const int sendStatus = avcodec_send_packet(codecContext, packet);
+            av_packet_unref(packet);
+            if (sendStatus < 0) {
+                qWarning() << "⚠️ FFmpeg no pudo enviar packet:" << ffmpegErrorString(sendStatus);
+                QFile::remove(tempPath);
+                return {};
+            }
+            if (!receiveFrames()) {
+                QFile::remove(tempPath);
+                return {};
+            }
+        } else {
+            av_packet_unref(packet);
+        }
+    }
+
+    avcodec_send_packet(codecContext, nullptr);
+    if (!receiveFrames()) {
+        QFile::remove(tempPath);
+        return {};
+    }
+
+    if (dataBytes == 0 || dataBytes > std::numeric_limits<quint32>::max()) {
+        QFile::remove(tempPath);
+        return {};
+    }
+
+    if (!writeWavHeader(out, quint32(dataBytes), outputRate, outputChannels)) {
+        QFile::remove(tempPath);
+        return {};
+    }
+    out.close();
+
+    QFile::remove(outputPath);
+    if (!QFile::rename(tempPath, outputPath)) {
+        QFile::remove(tempPath);
+        return {};
+    }
+
+    QFile::remove(filePath);
+    qDebug() << "✅ Audio normalizado a WAV para APE:" << outputPath;
+    return outputPath;
+}
+#endif
+
 static QString convertToPlayableAudioIfNeeded(const QString &filePath)
 {
 #ifdef __COSMOPOLITAN__
-    if (!IsXnu() || filePath.isEmpty()) {
+    if (filePath.isEmpty()) {
         return filePath;
     }
 
@@ -397,43 +633,7 @@ static QString convertToPlayableAudioIfNeeded(const QString &filePath)
         return filePath;
     }
 
-    const QString outputPath = inputInfo.dir().filePath(inputInfo.completeBaseName() + ".wav");
-    if (isValidAudioFile(outputPath)) {
-        return outputPath;
-    }
-
-    const QString afconvertPath = QStringLiteral("/usr/bin/afconvert");
-    if (!isExecutableFile(afconvertPath)) {
-        qWarning() << "⚠️ afconvert no disponible; no se puede convertir audio para APE/macOS";
-        return {};
-    }
-
-    const QString tempPath = outputPath + ".tmp";
-    QFile::remove(tempPath);
-
-    QProcess converter;
-    converter.setProgram(afconvertPath);
-    converter.setArguments({ filePath, tempPath, "-f", "WAVE", "-d", "LEI16@44100" });
-    converter.start();
-
-    if (!converter.waitForFinished(120000) || converter.exitStatus() != QProcess::NormalExit
-        || converter.exitCode() != 0) {
-        qWarning() << "⚠️ afconvert falló:"
-                   << QString::fromUtf8(converter.readAllStandardError()).trimmed();
-        QFile::remove(tempPath);
-        return {};
-    }
-
-    QFile::remove(outputPath);
-    if (!QFile::rename(tempPath, outputPath)) {
-        qWarning() << "⚠️ No se pudo mover WAV convertido a cache:" << outputPath;
-        QFile::remove(tempPath);
-        return {};
-    }
-
-    QFile::remove(filePath);
-    qDebug() << "✅ Audio convertido para APE/macOS:" << outputPath;
-    return outputPath;
+    return convertWithFfmpegToWav(filePath);
 #else
     return filePath;
 #endif
@@ -466,6 +666,7 @@ YoutubeDownloader::YoutubeDownloader(QObject *parent)
     , m_currentCacheSize(0)
     , m_maxFileSize(100 * 1024 * 1024)
     , m_maxSongsPerPlaylist(10)
+    , m_ytdlpDownloadInProgress(false)
     , m_downloadedCount(0)
     , m_totalToDownload(0)
 {
@@ -476,21 +677,18 @@ YoutubeDownloader::YoutubeDownloader(QObject *parent)
     connect(m_process, &QProcess::readyReadStandardError,
             this, &YoutubeDownloader::onReadyReadStandardError);
 
-    // Verificar/descargar yt-dlp al iniciar
     if (!QFile::exists(m_ytdlpPath)) {
         QString embeddedPath;
         if (extractEmbeddedYtDlp(&embeddedPath)) {
             m_ytdlpPath = embeddedPath;
             qDebug() << "✅ yt-dlp embebido listo:" << m_ytdlpPath;
         } else {
-            qDebug() << "⬇️ yt-dlp no encontrado, descargando...";
-            downloadYtDlp();
+            qDebug() << "⬇️ yt-dlp no encontrado; se descargará en el primer uso";
         }
     } else if (isEmbeddedYtDlpPath(m_ytdlpPath)) {
         qDebug() << "✅ yt-dlp embebido listo:" << m_ytdlpPath;
     } else if (isDownloadedYtDlpPath(m_ytdlpPath)) {
         qDebug() << "✅ yt-dlp app-managed encontrado";
-        checkYtDlpVersion();
     } else {
         qDebug() << "✅ yt-dlp del sistema o empaquetado encontrado:" << m_ytdlpPath;
     }
@@ -526,11 +724,20 @@ YoutubeDownloader::~YoutubeDownloader()
 
 void YoutubeDownloader::downloadYtDlp()
 {
+    if (m_ytdlpDownloadInProgress) {
+        return;
+    }
+
     QString embeddedPath;
     if (extractEmbeddedYtDlp(&embeddedPath)) {
         m_ytdlpPath = embeddedPath;
         qDebug() << "✅ yt-dlp embebido listo";
         emit ytdlpDownloading("✅ yt-dlp listo");
+        if (!m_pendingYtDlpUrl.isEmpty()) {
+            const QString pendingUrl = m_pendingYtDlpUrl;
+            m_pendingYtDlpUrl.clear();
+            QTimer::singleShot(0, this, [this, pendingUrl]() { getAudioUrl(pendingUrl); });
+        }
         return;
     }
 
@@ -538,7 +745,11 @@ void YoutubeDownloader::downloadYtDlp()
         m_ytdlpPath = downloadedYtDlpPath();
     }
 
-    emit ytdlpDownloading("Descargando yt-dlp...");
+    m_ytdlpDownloadInProgress = true;
+    emit ytdlpDownloading("Downloading yt-dlp...");
+    emit downloadCountChanged(0, 1);
+    emit downloadProgressChanged(1, 1, 0, "yt-dlp");
+    emit progressUpdate("⬇️ Downloading yt-dlp...");
 
     QNetworkAccessManager *manager = new QNetworkAccessManager(this);
     QUrl url = ytDlpDownloadUrl();
@@ -551,12 +762,15 @@ void YoutubeDownloader::downloadYtDlp()
             [this](qint64 received, qint64 total) {
                 if (total > 0) {
                     int percent = (received * 100) / total;
-                    emit ytdlpDownloading(QString("Descargando yt-dlp: %1%").arg(percent));
+                    emit ytdlpDownloading(QString("Downloading yt-dlp: %1%").arg(percent));
+                    emit downloadProgressChanged(1, 1, percent, "yt-dlp");
+                    emit progressUpdate(QString("⬇️ Downloading yt-dlp: %1%").arg(percent));
                     qDebug() << "⬇️ yt-dlp:" << percent << "%";
                 }
             });
 
     connect(reply, &QNetworkReply::finished, this, [this, reply, manager]() {
+        m_ytdlpDownloadInProgress = false;
         if (reply->error() == QNetworkReply::NoError) {
             QFileInfo targetInfo(m_ytdlpPath);
             QDir().mkpath(targetInfo.absolutePath());
@@ -571,18 +785,46 @@ void YoutubeDownloader::downloadYtDlp()
 #endif
                 qDebug() << "✅ yt-dlp descargado correctamente";
                 emit ytdlpDownloading("✅ yt-dlp listo");
+                emit downloadProgressChanged(1, 1, 100, "yt-dlp");
+                emit progressUpdate("✅ yt-dlp ready");
+                if (!m_pendingYtDlpUrl.isEmpty()) {
+                    const QString pendingUrl = m_pendingYtDlpUrl;
+                    m_pendingYtDlpUrl.clear();
+                    QTimer::singleShot(0, this, [this, pendingUrl]() { getAudioUrl(pendingUrl); });
+                }
             } else {
                 qCritical() << "❌ No se pudo guardar yt-dlp";
+                m_pendingYtDlpUrl.clear();
                 emit errorOccurred("No se pudo instalar yt-dlp");
             }
         } else {
             qCritical() << "❌ Error descargando yt-dlp:" << reply->errorString();
+            m_pendingYtDlpUrl.clear();
             emit errorOccurred("Error descargando yt-dlp. Verifica tu conexión a internet.");
         }
 
         reply->deleteLater();
         manager->deleteLater();
     });
+}
+
+bool YoutubeDownloader::ensureYtDlpReadyForRequest(const QString &youtubeUrl)
+{
+    if (QFile::exists(m_ytdlpPath)) {
+        return true;
+    }
+
+    QString embeddedPath;
+    if (extractEmbeddedYtDlp(&embeddedPath)) {
+        m_ytdlpPath = embeddedPath;
+        return true;
+    }
+
+    m_ytdlpPath = downloadedYtDlpPath();
+    m_pendingYtDlpUrl = youtubeUrl;
+    qDebug() << "⬇️ yt-dlp no existe, iniciando descarga";
+    downloadYtDlp();
+    return false;
 }
 
 void YoutubeDownloader::checkYtDlpVersion()
@@ -888,18 +1130,8 @@ bool YoutubeDownloader::makeSpaceForFile(qint64 estimatedSize)
 
 void YoutubeDownloader::getAudioUrl(const QString &youtubeUrl)
 {
-    if (!QFile::exists(m_ytdlpPath)) {
-        QString embeddedPath;
-        if (extractEmbeddedYtDlp(&embeddedPath)) {
-            m_ytdlpPath = embeddedPath;
-        } else {
-            emit errorOccurred("yt-dlp no encontrado. Descargando...");
-            qCritical() << "❌ yt-dlp NO EXISTE, iniciando descarga";
-            m_ytdlpPath = downloadedYtDlpPath();
-            downloadYtDlp();
-            return;
-        }
-    }
+    if (!ensureYtDlpReadyForRequest(youtubeUrl))
+        return;
 
     m_downloadQueue.clear();
     m_downloadedCount = 0;
@@ -1089,7 +1321,15 @@ void YoutubeDownloader::startNextDownload()
     QStringList args;
     args << "-f";
     if (nativeAudio) {
+#ifdef __COSMOPOLITAN__
+        if (IsXnu()) {
+            args << "bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/18/best[ext=mp4]";
+        } else {
+            args << "bestaudio[ext=webm][acodec=opus]/bestaudio[acodec=opus]/bestaudio[ext=webm]/bestaudio";
+        }
+#else
         args << "bestaudio[ext=m4a]/bestaudio[acodec^=mp4a]/18/best[ext=mp4]";
+#endif
     } else {
         args << "bestaudio/best"
              << "-x"
