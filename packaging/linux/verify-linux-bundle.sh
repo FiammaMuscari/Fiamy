@@ -75,6 +75,17 @@ is_must_bundle_library() {
 failures=0
 checked=0
 
+QML_DIR="${LIB_DIR}/qt6/qml"
+for required_qml_module in \
+  QtQuick/Dialogs \
+  QtQuick/Dialogs/quickimpl \
+  Qt/labs/folderlistmodel; do
+  if [[ ! -e "${QML_DIR}/${required_qml_module}/qmldir" ]]; then
+    echo "Missing required QML module: ${required_qml_module}" >&2
+    failures=$((failures + 1))
+  fi
+done
+
 while IFS= read -r -d '' bundled_file; do
   if is_forbidden_bundled_library "${bundled_file}"; then
     echo "Forbidden glibc/loader component bundled: $(realpath --relative-to="${BUNDLE_ROOT}" "${bundled_file}")" >&2

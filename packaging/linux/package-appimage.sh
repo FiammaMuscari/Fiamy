@@ -25,7 +25,14 @@ cat > "${APPDIR}/usr/etc/fonts/fonts.conf" <<'EOF'
 <?xml version="1.0"?>
 <fontconfig>
   <description>Fiamy bundled fontconfig runtime</description>
-  <dir prefix="relative">../../share/fonts</dir>
+  <!--
+    The AppImage copies the whole portable bundle under AppDir/usr.
+    Portable fonts therefore live at:
+      AppDir/usr/usr/share/fonts
+    Keep this path aligned with package-portable.sh, otherwise Qt starts with
+    no usable bundled fonts and QML text/icons render as tofu squares.
+  -->
+  <dir prefix="relative">../../usr/share/fonts</dir>
   <cachedir prefix="xdg">fontconfig</cachedir>
   <cachedir>~/.fontconfig</cachedir>
   <config>
