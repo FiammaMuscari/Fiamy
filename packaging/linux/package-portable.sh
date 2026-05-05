@@ -91,13 +91,21 @@ copy_fontconfig_runtime() {
 
   for font_dir in \
     /usr/share/fonts/truetype/dejavu \
-    /usr/share/fonts/truetype/liberation2 \
-    /usr/share/fonts/truetype/noto \
-    /usr/share/fonts/truetype/noto-color-emoji \
-    /usr/share/fonts/opentype/noto \
-    /usr/share/fonts/google-noto-emoji; do
+    /usr/share/fonts/truetype/liberation2; do
     if [[ -d "${font_dir}" ]]; then
       copy_tree "${font_dir}" "${PORTABLE_DIR}${font_dir}"
+    fi
+  done
+
+  # Keep the bundle small: only ship the Noto files needed for sane fallback
+  # text and emoji rendering instead of the full Noto family (~150 MB).
+  for font_file in \
+    /usr/share/fonts/truetype/noto/NotoSans-Regular.ttf \
+    /usr/share/fonts/truetype/noto/NotoSans-Bold.ttf \
+    /usr/share/fonts/truetype/noto/NotoColorEmoji.ttf \
+    /usr/share/fonts/google-noto-emoji/NotoColorEmoji.ttf; do
+    if [[ -f "${font_file}" ]]; then
+      copy_file_if_needed "${font_file}" "${PORTABLE_DIR}$(dirname "${font_file}")"
     fi
   done
 }

@@ -29,7 +29,8 @@ mkdir -p \
   "${PKG_ROOT}/opt" \
   "${PKG_ROOT}/usr/bin" \
   "${PKG_ROOT}/usr/share/applications" \
-  "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps"
+  "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps" \
+  "${PKG_ROOT}/usr/share/icons/hicolor/scalable/apps"
 
 cp -a "${PORTABLE_DIR}" "${PKG_ROOT}/opt/fiamy"
 
@@ -52,6 +53,7 @@ StartupNotify=true
 EOF
 
 cp -a "${ROOT_DIR}/pink.png" "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps/fiamy.png"
+cp -a "${ROOT_DIR}/fiamy.svg" "${PKG_ROOT}/usr/share/icons/hicolor/scalable/apps/fiamy.svg"
 
 cat > "${PKG_ROOT}/DEBIAN/control" <<EOF
 Package: fiamy

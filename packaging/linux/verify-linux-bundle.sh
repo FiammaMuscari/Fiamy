@@ -86,6 +86,16 @@ for required_qml_module in \
   fi
 done
 
+for required_svg_asset in \
+  share/icons/hicolor/scalable/apps/fiamy.svg \
+  lib/x86_64-linux-gnu/qt6/plugins/imageformats/libqsvg.so \
+  lib/x86_64-linux-gnu/qt6/plugins/iconengines/libqsvgicon.so; do
+  if [[ ! -e "${BUNDLE_ROOT}/${required_svg_asset}" ]]; then
+    echo "Missing required SVG asset/support: ${required_svg_asset}" >&2
+    failures=$((failures + 1))
+  fi
+done
+
 while IFS= read -r -d '' bundled_file; do
   if is_forbidden_bundled_library "${bundled_file}"; then
     echo "Forbidden glibc/loader component bundled: $(realpath --relative-to="${BUNDLE_ROOT}" "${bundled_file}")" >&2

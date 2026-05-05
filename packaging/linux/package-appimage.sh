@@ -75,6 +75,7 @@ StartupNotify=true
 EOF
 
 cp -a "${ROOT_DIR}/pink.png" "${APPDIR}/fiamy.png"
+cp -a "${ROOT_DIR}/fiamy.svg" "${APPDIR}/fiamy.svg"
 "${ROOT_DIR}/packaging/linux/verify-linux-bundle.sh" "${APPDIR}/usr"
 
 if [[ -z "${APPIMAGETOOL}" ]]; then

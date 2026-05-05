@@ -48,6 +48,7 @@ set(QML_FILES
 set(RESOURCE_FILES
     pink.png
     pink.ico
+    fiamy.svg
 )
 
 file(GLOB THIRD_PARTY_HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/*.h")
@@ -168,6 +169,9 @@ if(UNIX AND NOT APPLE)
     install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/pink.png"
         DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/256x256/apps"
         RENAME fiamy.png
+    )
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/fiamy.svg"
+        DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps"
     )
     install(FILES "${FIAMY_LINUX_DESKTOP_FILE}"
         DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/applications"
