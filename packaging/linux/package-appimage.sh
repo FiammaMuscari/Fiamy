@@ -48,13 +48,33 @@ cat > "${APPDIR}/AppRun" <<'EOF'
 set -euo pipefail
 
 APPDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FONTCONFIG_BASE_DIR="${XDG_RUNTIME_DIR:-/tmp}"
+if [[ ! -d "${FONTCONFIG_BASE_DIR}" || ! -w "${FONTCONFIG_BASE_DIR}" ]]; then
+  FONTCONFIG_BASE_DIR="/tmp"
+fi
+FONTCONFIG_RUNTIME_DIR="${FONTCONFIG_BASE_DIR}/fiamy-fontconfig-${UID:-$(id -u)}"
+mkdir -p "${FONTCONFIG_RUNTIME_DIR}/cache"
+cat > "${FONTCONFIG_RUNTIME_DIR}/fonts.conf" <<FONTS_EOF
+<?xml version="1.0"?>
+<fontconfig>
+  <description>Fiamy AppImage runtime fonts</description>
+  <dir>${APPDIR}/usr/usr/share/fonts</dir>
+  <dir>${APPDIR}/usr/share/fonts</dir>
+  <cachedir>${FONTCONFIG_RUNTIME_DIR}/cache</cachedir>
+  <cachedir prefix="xdg">fontconfig</cachedir>
+  <config>
+    <rescan><int>30</int></rescan>
+  </config>
+</fontconfig>
+FONTS_EOF
+
 export LD_LIBRARY_PATH="${APPDIR}/usr/lib:${APPDIR}/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 export QT_PLUGIN_PATH="${APPDIR}/usr/lib/x86_64-linux-gnu/qt6/plugins${QT_PLUGIN_PATH:+:${QT_PLUGIN_PATH}}"
 export QML2_IMPORT_PATH="${APPDIR}/usr/lib/x86_64-linux-gnu/qt6/qml${QML2_IMPORT_PATH:+:${QML2_IMPORT_PATH}}"
 export QT_QPA_PLATFORM_PLUGIN_PATH="${APPDIR}/usr/lib/x86_64-linux-gnu/qt6/plugins/platforms"
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland;xcb}"
-export FONTCONFIG_PATH="${APPDIR}/usr/etc/fonts"
-export FONTCONFIG_FILE="${APPDIR}/usr/etc/fonts/fonts.conf"
+export FONTCONFIG_PATH="${FONTCONFIG_RUNTIME_DIR}"
+export FONTCONFIG_FILE="${FONTCONFIG_RUNTIME_DIR}/fonts.conf"
 export XDG_DATA_DIRS="${APPDIR}/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 export QT_QUICK_BACKEND="${QT_QUICK_BACKEND:-software}"
 

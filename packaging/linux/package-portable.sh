@@ -102,6 +102,9 @@ copy_fontconfig_runtime() {
   for font_file in \
     /usr/share/fonts/truetype/noto/NotoSans-Regular.ttf \
     /usr/share/fonts/truetype/noto/NotoSans-Bold.ttf \
+    /usr/share/fonts/truetype/noto/NotoSansSymbols-Regular.ttf \
+    /usr/share/fonts/truetype/noto/NotoSansSymbols-Bold.ttf \
+    /usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf \
     /usr/share/fonts/truetype/noto/NotoColorEmoji.ttf \
     /usr/share/fonts/google-noto-emoji/NotoColorEmoji.ttf; do
     if [[ -f "${font_file}" ]]; then
